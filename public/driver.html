@@ -1,0 +1,64 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>RideBook - Driver Dashboard</title>
+  <link rel="stylesheet" href="css/style.css">
+  <style>
+    body {
+      overflow: auto;
+    }
+    #driver-dashboard {
+      max-width: 600px;
+      margin: 0 auto;
+      padding: 30px 20px;
+      background: #1a1a2e;
+      min-height: 100vh;
+      color: #ffffff;
+    }
+    #driver-dashboard h1 {
+      color: #00d4aa;
+      margin-bottom: 5px;
+    }
+    #driver-dashboard p {
+      color: #aaaaaa;
+      margin-bottom: 20px;
+    }
+    .ride-card {
+      background: #16213e;
+      padding: 16px;
+      border-radius: 8px;
+      margin-bottom: 12px;
+    }
+    .ride-card .coords {
+      font-size: 0.85rem;
+      color: #cccccc;
+      margin-bottom: 10px;
+    }
+    .ride-card button {
+      margin-right: 8px;
+    }
+    .accept-btn {
+      background: #00d4aa;
+      color: #1a1a2e;
+    }
+    .complete-btn {
+      background: #6c63ff;
+      color: #ffffff;
+    }
+    .no-rides {
+      color: #666;
+      font-style: italic;
+    }
+  </style>
+</head>
+<body>
+  <div id="driver-dashboard">
+    <h1>Driver Dashboard</h1>
+    <p>Pending rides will appear below. Accept or complete them.</p>
+    <div id="driver-rides"></div>
+  </div>
+  <script src="js/driver.js"></script>
+</body>
+</html>
