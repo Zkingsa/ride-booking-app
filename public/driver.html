@@ -4,37 +4,166 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>RideBook - Driver Dashboard</title>
+  <!-- Leaflet CSS -->
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
   <link rel="stylesheet" href="css/style.css">
   <style>
     body {
       overflow: auto;
+      background: #1a1a2e;
+      color: #ffffff;
+      margin: 0;
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
     }
     #driver-dashboard {
-      max-width: 600px;
+      max-width: 800px;
       margin: 0 auto;
-      padding: 30px 20px;
-      background: #1a1a2e;
-      min-height: 100vh;
-      color: #ffffff;
+      padding: 20px;
     }
     #driver-dashboard h1 {
       color: #00d4aa;
-      margin-bottom: 5px;
+      margin: 0;
     }
-    #driver-dashboard p {
-      color: #aaaaaa;
+    .header-flex {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
       margin-bottom: 20px;
     }
-    .ride-card {
+    .logout-btn {
+      background: #ff6b6b;
+      padding: 8px 20px;
+      border: none;
+      border-radius: 6px;
+      color: #ffffff;
+      cursor: pointer;
+      font-weight: 600;
+    }
+    #driver-controls {
+      display: flex;
+      gap: 15px;
+      align-items: center;
+      margin-bottom: 20px;
+    }
+    #go-online-btn {
+      background: #00d4aa;
+      color: #1a1a2e;
+      padding: 12px 24px;
+      font-size: 1rem;
+      border: none;
+      border-radius: 6px;
+      cursor: pointer;
+      font-weight: 600;
+    }
+    #go-online-btn.offline {
+      background: #ff6b6b;
+      color: #ffffff;
+    }
+    #driver-status-text {
+      font-size: 0.9rem;
+      color: #aaaaaa;
+    }
+
+    /* --- WALLET PANEL --- */
+    #wallet-panel {
+      display: flex;
+      gap: 20px;
+      background: #0f0f1e;
+      border: 1px solid #00d4aa;
+      border-radius: 12px;
+      padding: 20px;
+      margin-bottom: 20px;
+    }
+    .wallet-box {
+      flex: 1;
+      text-align: center;
+    }
+    .wallet-box h4 {
+      color: #aaaaaa;
+      font-size: 0.8rem;
+      text-transform: uppercase;
+      margin: 0 0 5px 0;
+    }
+    .wallet-box .amount {
+      font-size: 1.8rem;
+      font-weight: bold;
+      color: #ffd700;
+    }
+    .wallet-box .amount.green {
+      color: #00d4aa;
+    }
+
+    /* --- DRIVER MAP --- */
+    #driver-map {
+      height: 400px;
+      width: 100%;
+      border-radius: 12px;
+      margin-bottom: 20px;
+      border: 2px solid #2a2a4e;
+      z-index: 1;
+    }
+
+    /* --- ROUTE PANEL (Floating Overlay) --- */
+    #route-panel {
+      display: none;
+      position: absolute;
+      top: 120px;
+      right: 20px;
+      width: 280px;
+      background: #0f0f1e;
+      border: 1px solid #00d4aa;
+      border-radius: 8px;
+      padding: 15px;
+      color: #ffffff;
+      z-index: 1000;
+      box-shadow: 0 4px 15px rgba(0,0,0,0.8);
+    }
+    #route-panel h3 {
+      color: #00d4aa;
+      margin-top: 0;
+      margin-bottom: 10px;
+      font-size: 1rem;
+    }
+    .route-stat {
+      display: flex;
+      justify-content: space-between;
+      font-size: 0.9rem;
+      margin-bottom: 5px;
+    }
+    .route-stat span {
+      font-weight: bold;
+      color: #ffffff;
+    }
+    #turn-list {
+      margin-top: 10px;
+      list-style: none;
+      padding: 0;
+      max-height: 150px;
+      overflow-y: auto;
+      border-top: 1px solid #2a2a4e;
+      padding-top: 10px;
+    }
+    #turn-list li {
+      padding: 5px 0;
+      font-size: 0.85rem;
+      color: #dddddd;
+      border-bottom: 1px solid #1a1a2e;
+    }
+    #turn-list li::before {
+      content: "➡️ ";
+      color: #00d4aa;
+    }
+
+    .rides-container {
       background: #16213e;
+      padding: 20px;
+      border-radius: 12px;
+    }
+    .ride-card {
+      background: #0f0f1e;
       padding: 16px;
       border-radius: 8px;
       margin-bottom: 12px;
-    }
-    .ride-card .coords {
-      font-size: 0.85rem;
-      color: #cccccc;
-      margin-bottom: 10px;
     }
     .ride-card button {
       margin-right: 8px;
@@ -42,23 +171,73 @@
     .accept-btn {
       background: #00d4aa;
       color: #1a1a2e;
+      border: none;
+      border-radius: 6px;
+      padding: 8px 16px;
+      cursor: pointer;
+      font-weight: 600;
     }
     .complete-btn {
       background: #6c63ff;
       color: #ffffff;
+      border: none;
+      border-radius: 6px;
+      padding: 8px 16px;
+      cursor: pointer;
+      font-weight: 600;
     }
-    .no-rides {
-      color: #666;
-      font-style: italic;
-    }
+    .no-rides { color: #777; font-style: italic; }
   </style>
 </head>
 <body>
   <div id="driver-dashboard">
-    <h1>Driver Dashboard</h1>
-    <p>Pending rides will appear below. Accept or complete them.</p>
-    <div id="driver-rides"></div>
+    
+    <!-- HEADER -->
+    <div class="header-flex">
+      <h1>🚗 Driver Dashboard</h1>
+      <button class="logout-btn" id="logout-btn">Logout</button>
+    </div>
+    
+    <!-- CONTROLS -->
+    <div id="driver-controls">
+      <button id="go-online-btn" class="offline">Go Online</button>
+      <span id="driver-status-text">Status: Offline</span>
+    </div>
+
+    <!-- WALLET PANEL -->
+    <div id="wallet-panel">
+      <div class="wallet-box">
+        <h4>💰 Total Earnings</h4>
+        <div class="amount" id="total-earnings">R0.00</div>
+      </div>
+      <div class="wallet-box">
+        <h4>✅ Rides Completed</h4>
+        <div class="amount green" id="rides-completed">0</div>
+      </div>
+    </div>
+
+    <!-- DRIVER MAP -->
+    <div id="driver-map"></div>
+
+    <!-- ROUTE PANEL (Floating Overlay) -->
+    <div id="route-panel">
+      <h3>📍 Route to Pickup</h3>
+      <div class="route-stat">Distance: <span id="route-distance">--</span></div>
+      <div class="route-stat">Est. Time: <span id="route-time">--</span></div>
+      <ul id="turn-list"></ul>
+    </div>
+    
+    <!-- RIDES LIST -->
+    <div class="rides-container">
+      <h2>Active & Pending Rides</h2>
+      <div id="driver-rides"></div>
+    </div>
+
   </div>
+
+  <!-- Leaflet JS -->
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <script src="/socket.io/socket.io.js"></script>
   <script src="js/driver.js"></script>
 </body>
 </html>

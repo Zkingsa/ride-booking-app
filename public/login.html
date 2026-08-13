@@ -1,0 +1,207 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>RideBook - Login / Register</title>
+  <link rel="stylesheet" href="css/style.css">
+  <style>
+    body {
+      background: #1a1a2e;
+      color: #ffffff;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      height: 100vh;
+      margin: 0;
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    }
+    .login-box {
+      background: #16213e;
+      padding: 40px;
+      border-radius: 12px;
+      width: 350px;
+      text-align: center;
+      box-shadow: 0 4px 20px rgba(0, 0, 0, 0.6);
+    }
+    .login-box h1 {
+      color: #00d4aa;
+      margin-bottom: 20px;
+    }
+    input, select {
+      width: 100%;
+      padding: 12px;
+      margin: 10px 0;
+      border-radius: 6px;
+      border: none;
+      background: #0f0f1e;
+      color: #ffffff;
+      box-sizing: border-box;
+    }
+    input:focus, select:focus {
+      outline: 2px solid #00d4aa;
+    }
+    button {
+      width: 100%;
+      padding: 12px;
+      background: #00d4aa;
+      color: #1a1a2e;
+      border: none;
+      border-radius: 6px;
+      font-weight: bold;
+      font-size: 1rem;
+      cursor: pointer;
+      margin-top: 10px;
+    }
+    button:hover {
+      background: #00b894;
+    }
+    .toggle-link {
+      color: #aaaaaa;
+      font-size: 0.9rem;
+      margin-top: 15px;
+      cursor: pointer;
+      display: block;
+    }
+    .toggle-link:hover {
+      color: #00d4aa;
+    }
+    .error-msg {
+      color: #ff6b6b;
+      font-size: 0.85rem;
+      margin-top: 10px;
+      min-height: 40px;
+      white-space: pre-wrap;
+      word-break: break-all;
+      text-align: left;
+      background: #0f0f1e;
+      padding: 8px;
+      border-radius: 4px;
+      display: none;
+    }
+    .hidden-field { display: none; }
+    .visible-field { display: block; }
+  </style>
+</head>
+<body>
+  <div class="login-box">
+    <h1>RideBook</h1>
+    <h2 id="form-title">Login</h2>
+    
+    <input type="text" id="name-input" class="hidden-field" placeholder="Full Name">
+    <input type="email" id="email-input" placeholder="Email Address">
+    <input type="password" id="password-input" placeholder="Password">
+    
+    <select id="role-input" class="hidden-field" aria-label="Select your user role">
+      <option value="rider">Rider (Passenger)</option>
+      <option value="driver">Driver</option>
+    </select>
+    
+    <button id="submit-btn">Login</button>
+    <p class="toggle-link" id="toggle-auth">Don't have an account? Register</p>
+    <div class="error-msg" id="error-msg"></div>
+  </div>
+
+  <script>
+    const toggleText = document.getElementById('toggle-auth');
+    const formTitle = document.getElementById('form-title');
+    const nameInput = document.getElementById('name-input');
+    const roleInput = document.getElementById('role-input');
+    const submitBtn = document.getElementById('submit-btn');
+    const errorMsg = document.getElementById('error-msg');
+    let isLogin = true;
+
+    toggleText.addEventListener('click', () => {
+      isLogin = !isLogin;
+      errorMsg.style.display = 'none';
+      errorMsg.textContent = '';
+      formTitle.textContent = isLogin ? 'Login' : 'Register';
+      
+      if (isLogin) {
+        nameInput.classList.remove('visible-field');
+        nameInput.classList.add('hidden-field');
+        roleInput.classList.remove('visible-field');
+        roleInput.classList.add('hidden-field');
+      } else {
+        nameInput.classList.remove('hidden-field');
+        nameInput.classList.add('visible-field');
+        roleInput.classList.remove('hidden-field');
+        roleInput.classList.add('visible-field');
+      }
+      
+      submitBtn.textContent = isLogin ? 'Login' : 'Register';
+      toggleText.textContent = isLogin ? "Don't have an account? Register" : "Already have an account? Login";
+    });
+
+    submitBtn.addEventListener('click', async () => {
+      errorMsg.style.display = 'none';
+      errorMsg.textContent = '';
+
+      const email = document.getElementById('email-input').value.trim();
+      const password = document.getElementById('password-input').value.trim();
+      const role = roleInput.value;
+      const name = nameInput.value.trim();
+
+      if (!email || !password || (!isLogin && !name)) {
+        errorMsg.textContent = 'Please fill in all fields.';
+        errorMsg.style.display = 'block';
+        return;
+      }
+
+      const url = isLogin ? '/api/auth/login' : '/api/auth/register';
+      const body = isLogin ? { email, password } : { name, email, password, role };
+
+      try {
+        const res = await fetch(url, { 
+          method: 'POST', 
+          headers: { 'Content-Type': 'application/json' }, 
+          body: JSON.stringify(body) 
+        });
+        
+        // Try to parse the response as JSON
+        let data;
+        try {
+          data = await res.json();
+        } catch (parseErr) {
+          // If it's not JSON, show the raw text (could be HTML error)
+          const text = await res.text();
+          errorMsg.textContent = `Server returned non-JSON: ${text.substring(0, 200)}`;
+          errorMsg.style.display = 'block';
+          return;
+        }
+        
+        if (res.ok) {
+          if (isLogin) {
+            localStorage.setItem('token', data.token);
+            localStorage.setItem('userId', data.user.id);
+            localStorage.setItem('userName', data.user.name);
+            localStorage.setItem('userRole', data.user.role);
+
+            if (data.user.role === 'driver') {
+              window.location.href = 'driver.html';
+            } else {
+              window.location.href = 'index.html';
+            }
+          } else {
+            errorMsg.textContent = '✅ Registration successful! Please login.';
+            errorMsg.style.color = '#00d4aa';
+            errorMsg.style.display = 'block';
+            setTimeout(() => {
+              toggleText.click();
+              errorMsg.style.color = '#ff6b6b';
+            }, 2000);
+          }
+        } else {
+          // Show the exact error message from the server
+          errorMsg.textContent = data.error || `Server error (${res.status})`;
+          errorMsg.style.display = 'block';
+        }
+      } catch (err) {
+        errorMsg.textContent = `Connection error: ${err.message}`;
+        errorMsg.style.display = 'block';
+        console.error(err);
+      }
+    });
+  </script>
+</body>
+</html>

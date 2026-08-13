@@ -1,125 +1,52 @@
-* {
-  margin: 0;
-  padding: 0;
-  box-sizing: border-box;
-}
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; height: 100vh; overflow: hidden; }
+#app { display: flex; height: 100vh; }
 
-body {
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-  height: 100vh;
-  overflow: hidden;
-}
+#sidebar { width: 350px; padding: 20px; background: #1a1a2e; color: #ffffff; overflow-y: auto; flex-shrink: 0; }
+#sidebar h1 { font-size: 1.5rem; margin-bottom: 5px; color: #00d4aa; }
+#sidebar h2 { font-size: 1rem; margin-top: 15px; margin-bottom: 10px; color: #aaaaaa; text-transform: uppercase; letter-spacing: 1px; }
 
-#app {
-  display: flex;
-  height: 100vh;
-}
+.instruction { font-size: 0.9rem; color: #cccccc; margin-bottom: 15px; }
+#ride-controls { display: flex; gap: 10px; margin-bottom: 15px; }
+#ride-controls.hidden { display: none; }
 
-#sidebar {
-  width: 320px;
-  padding: 20px;
-  background: #1a1a2e;
-  color: #ffffff;
-  overflow-y: auto;
-  flex-shrink: 0;
-}
+button { padding: 10px 16px; border: none; border-radius: 6px; cursor: pointer; font-size: 0.9rem; font-weight: 600; }
+#request-btn { background: #00d4aa; color: #1a1a2e; flex: 1; }
+#reset-btn { background: #444466; color: #ffffff; }
 
-#sidebar h1 {
-  font-size: 1.5rem;
-  margin-bottom: 10px;
-  color: #00d4aa;
-}
+#rides-list { list-style: none; }
+#rides-list li { background: #16213e; padding: 12px; border-radius: 6px; margin-bottom: 8px; font-size: 0.85rem; line-height: 1.5; }
+#rides-list li .status { display: inline-block; padding: 2px 8px; border-radius: 10px; font-size: 0.75rem; font-weight: 600; text-transform: uppercase; margin-top: 5px; }
+#rides-list li .status.pending { background: #ffc107; color: #1a1a2e; }
+#rides-list li .status.accepted { background: #00d4aa; color: #1a1a2e; }
+#rides-list li .status.completed { background: #6c757d; color: #ffffff; }
 
-#sidebar h2 {
-  font-size: 1rem;
-  margin-top: 20px;
-  margin-bottom: 10px;
-  color: #aaaaaa;
-  text-transform: uppercase;
-  letter-spacing: 1px;
-}
+#map { flex: 1; height: 100vh; }
 
-.instruction {
-  font-size: 0.9rem;
-  color: #cccccc;
-  margin-bottom: 15px;
-}
+/* Driver Status Panel */
+#driver-status-panel { display: flex; gap: 10px; margin-bottom: 15px; flex-wrap: wrap; }
+.status-box { flex:1; background: #16213e; padding: 10px; border-radius: 6px; text-align: center; border-left: 3px solid #00d4aa; }
+.status-label { display: block; font-size: 0.7rem; color: #777799; }
+.status-count { display: block; font-size: 1.2rem; font-weight: bold; color: #ffffff; margin-top: 2px; }
 
-#ride-controls {
-  display: flex;
-  gap: 10px;
-  margin-bottom: 15px;
-}
+/* Inputs & Clear Button */
+#search-container { margin-bottom: 15px; width: 100%; }
+#search-container label { display: block; font-size: 0.8rem; color: #aaaaaa; margin-bottom: 4px; }
+#search-container label:last-of-type { margin-top: 10px; }
+.input-wrapper { position: relative; width: 100%; }
+#pickup-search, #dropoff-search { width: 100%; padding: 10px 35px 10px 14px; border-radius: 6px; border: none; background: #16213e; color: #ffffff; font-size: 0.9rem; outline: 2px solid transparent; transition: outline 0.2s ease; box-sizing: border-box; }
+#pickup-search:focus, #dropoff-search:focus { outline: 2px solid #00d4aa; }
+.clear-btn { position: absolute; right: 12px; top: 50%; transform: translateY(-50%); color: #777799; cursor: pointer; font-size: 1rem; font-weight: bold; display: none; -webkit-user-select: none; user-select: none; }
+.clear-btn:hover { color: #ff6b6b; }
+.input-wrapper.active .clear-btn { display: block; }
 
-#ride-controls.hidden {
-  display: none;
-}
+/* Dropdown styles */
+.autocomplete-dropdown { position: absolute; top: 100%; left: 0; width: 100%; background: #16213e; border: 1px solid #00d4aa; border-top: none; border-radius: 0 0 6px 6px; max-height: 200px; overflow-y: auto; z-index: 1000; box-shadow: 0 4px 12px rgba(0,0,0,0.3); }
+.autocomplete-dropdown div { padding: 10px 14px; cursor: pointer; color: #cccccc; border-bottom: 1px solid #2a2a4e; font-size: 0.9rem; transition: background 0.2s; }
+.autocomplete-dropdown div:hover { background: #00d4aa; color: #1a1a2e; }
 
-button {
-  padding: 10px 16px;
-  border: none;
-  border-radius: 6px;
-  cursor: pointer;
-  font-size: 0.9rem;
-  font-weight: 600;
-}
-
-#request-btn {
-  background: #00d4aa;
-  color: #1a1a2e;
-  flex: 1;
-}
-
-#request-btn:hover {
-  background: #00b894;
-}
-
-#reset-btn {
-  background: #444466;
-  color: #ffffff;
-}
-
-#reset-btn:hover {
-  background: #555577;
-}
-
-#rides-list {
-  list-style: none;
-}
-
-#rides-list li {
-  background: #16213e;
-  padding: 12px;
-  border-radius: 6px;
-  margin-bottom: 8px;
-  font-size: 0.85rem;
-}
-
-#rides-list li .status {
-  display: inline-block;
-  padding: 2px 8px;
-  border-radius: 10px;
-  font-size: 0.75rem;
-  font-weight: 600;
-  text-transform: uppercase;
-}
-
-#rides-list li .status.pending {
-  background: #ffc107;
-  color: #1a1a2e;
-}
-
-#rides-list li .status.accepted {
-  background: #00d4aa;
-  color: #1a1a2e;
-}
-
-#rides-list li .status.completed {
-  background: #6c757d;
-  color: #ffffff;
-}
-
-#map {
-  flex: 1;
-  height: 100vh;
-}
+/* Chat Styles */
+#chat-modal { font-family: sans-serif; }
+#chat-messages div { padding: 8px 12px; border-radius: 8px; max-width: 80%; margin-bottom: 4px; }
+#chat-messages .me { align-self: flex-end; background: #00d4aa; color: #1a1a2e; }
+#chat-messages .them { align-self: flex-start; background: #2a2a4e; color: #fff; }

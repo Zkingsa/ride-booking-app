@@ -7,6 +7,11 @@ router.post('/', async (req, res) => {
   try {
     const ride = new Ride(req.body);
     await ride.save();
+    
+    // 📡 Emit real-time event to all connected drivers
+    const io = req.app.get('io');
+    io.emit('new-ride', ride);
+    
     res.status(201).json(ride);
   } catch (err) {
     res.status(400).json({ error: err.message });
@@ -32,6 +37,11 @@ router.patch('/:id', async (req, res) => {
       { new: true, runValidators: true }
     );
     if (!ride) return res.status(404).json({ error: 'Ride not found' });
+    
+    // 📡 Emit update event
+    const io = req.app.get('io');
+    io.emit('ride-updated', ride);
+    
     res.json(ride);
   } catch (err) {
     res.status(400).json({ error: err.message });
