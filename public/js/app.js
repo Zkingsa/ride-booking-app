@@ -26,6 +26,8 @@ document.addEventListener('DOMContentLoaded', () => {
   const dropoffSearch = document.getElementById('dropoff-search');
   const openMapBtn = document.getElementById('open-map-btn');
   const closeMapBtn = document.getElementById('close-map-btn');
+  const pickupPinBtn = document.getElementById('pickup-pin-btn');
+  const dropoffPinBtn = document.getElementById('dropoff-pin-btn');
   const confirmBtn = document.getElementById('confirm-ride-btn');
   const routeInfoText = document.getElementById('route-info-text');
   const rideOptionsList = document.getElementById('ride-options-list');
@@ -109,6 +111,24 @@ document.addEventListener('DOMContentLoaded', () => {
   // here, ahead of initRiderMap(), since that function reads it).
   let pendingGeoLocation = null;
 
+  // When set, the next map tap fills ONLY this field (used by the 📌 buttons
+  // on the search inputs) instead of following the normal pickup->dropoff
+  // sequence. Cleared once that tap is handled.
+  let pinPickField = null;
+
+  // --- RIDE OPTIONS ---
+  // priceMult/etaMult scale the base Standard fare/time. Saver is cheaper
+  // because it's matched with a driver who's still finishing another trip —
+  // hence the longer eta — instead of dispatching the nearest idle car.
+  const RIDE_TYPES = [
+    { id: 'bike', name: 'Bike', icon: '🏍️', seats: 1, priceMult: 0.55, etaMult: 0.75, sub: 'Fastest through traffic' },
+    { id: 'mini', name: 'Mini', icon: '🚙', seats: 2, priceMult: 0.8, etaMult: 0.95, sub: 'Compact, budget car' },
+    { id: 'standard', name: 'Standard', icon: '🚗', seats: 4, priceMult: 1, etaMult: 1, sub: 'Everyday rides' },
+    { id: 'saver', name: 'Saver', icon: '💸', seats: 4, priceMult: 0.7, etaMult: 1.7, sub: 'Cheapest — matched with a driver finishing a nearby trip' }
+  ];
+  let selectedRideType = 'standard';
+  let currentRideCost = 0;
+
   const greenIcon = L.icon({
     iconUrl: 'https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-green.png',
     shadowUrl: 'https://unpkg.com/leaflet@1.9.4/dist/images/marker-shadow.png',
@@ -128,32 +148,44 @@ document.addEventListener('DOMContentLoaded', () => {
   function setPickup(latlng) {
     if (pickupMarker) window.riderMap.removeLayer(pickupMarker);
     pickupMarker = L.marker(latlng, { icon: greenIcon }).addTo(window.riderMap).bindPopup('Pickup').openPopup();
-    clickState = 'dropoff';
-    routeInfoText.textContent = '📍 Pickup set — Dropoff?';
-    rideOptionsList.innerHTML = `<div style="color:#6b6b8d; text-align:center;">Now tap the map or search for Dropoff</div>`;
+    if (dropoffMarker) {
+      clickState = 'done';
+      updateRouteAndOptions();
+    } else {
+      clickState = 'dropoff';
+      routeInfoText.textContent = '📍 Pickup set — Dropoff?';
+      rideOptionsList.innerHTML = `<div style="color:#6b6b8d; text-align:center;">Now tap the map or search for Dropoff</div>`;
+    }
   }
 
   function setDropoff(latlng) {
     if (dropoffMarker) window.riderMap.removeLayer(dropoffMarker);
     dropoffMarker = L.marker(latlng, { icon: redIcon }).addTo(window.riderMap).bindPopup('Dropoff').openPopup();
-    clickState = 'done';
 
+    if (!pickupMarker) {
+      // Dropoff was picked (e.g. via the 📌 button) before pickup exists —
+      // just drop the pin and prompt for pickup, no fare/route to compute yet.
+      clickState = 'pickup';
+      routeInfoText.textContent = '🏁 Dropoff set — Pickup?';
+      rideOptionsList.innerHTML = `<div style="color:#6b6b8d; text-align:center;">Now tap the map or search for Pickup</div>`;
+      return;
+    }
+
+    clickState = 'done';
+    updateRouteAndOptions();
+  }
+
+  // Recomputes the fare/eta for every ride tier and redraws the route once
+  // BOTH pins exist. Called from setPickup/setDropoff whenever the other pin
+  // is already on the map (covers the normal 2-tap flow, search selection,
+  // and re-picking either point individually via the 📌 buttons).
+  function updateRouteAndOptions() {
     const pickupLatLng = pickupMarker.getLatLng();
     const dropoffLatLng = dropoffMarker.getLatLng();
     routeInfoText.textContent = `${pickupSearch.value || 'Pickup'} → ${dropoffSearch.value || 'Dropoff'}`;
 
     const dist = calculateDistance(pickupLatLng.lat, pickupLatLng.lng, dropoffLatLng.lat, dropoffLatLng.lng);
-    const timeEst = Math.round(dist * 2);
-    const priceStd = 15 + (dist * 8);
-
-    rideOptionsList.innerHTML = `
-      <div class="ride-option">
-        <div class="car-icon">🚗</div>
-        <div class="details"><div class="name">Standard Ride</div><div class="sub">${timeEst} min · 4 seats</div></div>
-        <div class="price">R${priceStd.toFixed(0)}</div>
-      </div>
-    `;
-    confirmBtn.textContent = `🚗 Request (R${priceStd.toFixed(0)})`;
+    renderRideOptions(dist);
 
     // Draw the full pickup → dropoff route (stays visible through the whole trip)
     if (routeLine) window.riderMap.removeLayer(routeLine);
@@ -170,6 +202,44 @@ document.addEventListener('DOMContentLoaded', () => {
       .catch(err => console.warn('Could not draw route:', err));
   }
 
+  // Renders all ride tiers (Bike/Mini/Standard/Saver) for the given distance,
+  // keeping whichever tier is currently selected highlighted, and wires up
+  // tap-to-select on each card.
+  function renderRideOptions(dist) {
+    const baseTimeEst = Math.max(1, Math.round(dist * 2));
+    const basePrice = 15 + (dist * 8);
+
+    rideOptionsList.innerHTML = RIDE_TYPES.map(rt => {
+      const price = Math.max(5, basePrice * rt.priceMult);
+      const eta = Math.max(1, Math.round(baseTimeEst * rt.etaMult));
+      const seatLabel = rt.seats === 1 ? '1 seat' : `${rt.seats} seats`;
+      const isSelected = rt.id === selectedRideType;
+      const subClass = rt.id === 'saver' ? 'sub saver-sub' : 'sub';
+      return `
+        <div class="ride-option${isSelected ? ' selected' : ''}" data-ride-type="${rt.id}">
+          <div class="car-icon">${rt.icon}</div>
+          <div class="details"><div class="name">${rt.name}</div><div class="${subClass}">${eta} min · ${seatLabel} · ${rt.sub}</div></div>
+          <div class="price">R${price.toFixed(0)}</div>
+        </div>
+      `;
+    }).join('');
+
+    rideOptionsList.querySelectorAll('.ride-option').forEach(el => {
+      el.addEventListener('click', () => {
+        selectedRideType = el.dataset.rideType;
+        renderRideOptions(dist); // re-render to move the highlight + refresh the button
+      });
+    });
+
+    updateConfirmButton(basePrice);
+  }
+
+  function updateConfirmButton(basePrice) {
+    const rt = RIDE_TYPES.find(r => r.id === selectedRideType) || RIDE_TYPES[2];
+    currentRideCost = Math.max(5, basePrice * rt.priceMult);
+    confirmBtn.textContent = `${rt.icon} Request ${rt.name} (R${currentRideCost.toFixed(0)})`;
+  }
+
   function initRiderMap() {
     if (window.riderMap) {
       window.riderMap.invalidateSize();
@@ -181,7 +251,15 @@ document.addEventListener('DOMContentLoaded', () => {
     window.riderMap.on('click', (e) => {
       if (trackingActive) return; // don't let taps move markers mid-trip
 
-      if (clickState === 'pickup') {
+      if (pinPickField === 'pickup') {
+        setPickup(e.latlng);
+        reverseGeocode(e.latlng.lat, e.latlng.lng, pickupSearch);
+        finishPinPick();
+      } else if (pinPickField === 'dropoff') {
+        setDropoff(e.latlng);
+        reverseGeocode(e.latlng.lat, e.latlng.lng, dropoffSearch);
+        finishPinPick();
+      } else if (clickState === 'pickup') {
         setPickup(e.latlng);
         reverseGeocode(e.latlng.lat, e.latlng.lng, pickupSearch);
       } else {
@@ -245,13 +323,40 @@ document.addEventListener('DOMContentLoaded', () => {
 
   // --- OPEN / CLOSE MAP ---
   openMapBtn.addEventListener('click', () => {
+    pinPickField = null;
     mapScreen.classList.add('open');
     if (window.riderMap) window.riderMap.invalidateSize();
   });
   closeMapBtn.addEventListener('click', () => {
+    pinPickField = null; // cancel any in-progress single-pin pick
     // While tracking, closing the map just hides the view — the ride/socket listeners keep running
     mapScreen.classList.remove('open');
   });
+
+  // --- 📌 PIN-DROP PICKERS (opens the map for one specific input) ---
+  function openPinPicker(field) {
+    if (trackingActive) return;
+    pinPickField = field;
+    if (!window.riderMap) initRiderMap();
+    mapScreen.classList.add('open');
+    window.riderMap.invalidateSize();
+    routeInfoText.textContent = field === 'pickup'
+      ? '📍 Tap the map to drop your Pickup pin'
+      : '🏁 Tap the map to drop your Dropoff pin';
+  }
+  pickupPinBtn.addEventListener('click', () => openPinPicker('pickup'));
+  dropoffPinBtn.addEventListener('click', () => openPinPicker('dropoff'));
+
+  // After a single pin-drop pick: if that completed the pair (both pins now
+  // set), stay on the map showing the ride sheet — the flow is effectively
+  // done. Otherwise it was just filling one field, so hop back to Home.
+  function finishPinPick() {
+    const bothSet = pickupMarker && dropoffMarker;
+    pinPickField = null;
+    if (!bothSet) {
+      setTimeout(() => { mapScreen.classList.remove('open'); }, 450);
+    }
+  }
 
   // --- REQUEST RIDE ---
   confirmBtn.addEventListener('click', async () => {
@@ -262,14 +367,15 @@ document.addEventListener('DOMContentLoaded', () => {
 
     const p = pickupMarker.getLatLng();
     const d = dropoffMarker.getLatLng();
-    const dist = calculateDistance(p.lat, p.lng, d.lat, d.lng);
-    const cost = 15 + (dist * 8);
+    const rt = RIDE_TYPES.find(r => r.id === selectedRideType) || RIDE_TYPES[2];
 
     const rideData = {
       pickup: { lat: p.lat, lng: p.lng },
       dropoff: { lat: d.lat, lng: d.lng },
       riderId: userId,
-      cost: cost.toFixed(2)
+      cost: currentRideCost.toFixed(2),
+      rideType: rt.id,
+      seats: rt.seats
     };
     try {
       const res = await fetch('/api/rides', {
@@ -294,7 +400,9 @@ document.addEventListener('DOMContentLoaded', () => {
     rideOptionsList.style.display = 'none';
     confirmBtn.style.display = 'none';
     trackingPanel.classList.remove('hidden');
-    trackingStatus.textContent = '🔎 Looking for a nearby driver...';
+    trackingStatus.textContent = (ride.rideType === 'saver')
+      ? '💸 Saver selected — matching you with a driver finishing a nearby trip...'
+      : '🔎 Looking for a nearby driver...';
     trackingEta.textContent = '';
     routeInfoText.textContent = `${pickupSearch.value || 'Pickup'} → ${dropoffSearch.value || 'Dropoff'}`;
     // routeLine (pickup → dropoff) from setDropoff() stays on the map through the whole trip.
@@ -375,6 +483,7 @@ document.addEventListener('DOMContentLoaded', () => {
     if (routeLine && window.riderMap) window.riderMap.removeLayer(routeLine);
     pickupMarker = null; dropoffMarker = null; routeLine = null;
     clickState = 'pickup';
+    selectedRideType = 'standard';
     confirmBtn.textContent = 'Request Ride';
     routeInfoText.textContent = 'Select Pickup & Dropoff';
     rideOptionsList.innerHTML = `<div style="color:#6b6b8d; text-align:center;">Tap the map to set locations</div>`;
@@ -393,10 +502,11 @@ document.addEventListener('DOMContentLoaded', () => {
       }
       rides.forEach(ride => {
         const date = new Date(ride.createdAt).toLocaleString();
+        const rt = RIDE_TYPES.find(r => r.id === ride.rideType) || RIDE_TYPES[2];
         container.innerHTML += `
           <div class="ride-history-item">
             <div class="h-info">
-              <div class="addr">From: ${ride.pickup.lat.toFixed(4)}</div>
+              <div class="addr">${rt.icon} ${rt.name} · From: ${ride.pickup.lat.toFixed(4)}</div>
               <div class="addr">To: ${ride.dropoff.lat.toFixed(4)}</div>
               <div style="color:#6b6b8d; font-size:0.8rem;">${date}</div>
             </div>

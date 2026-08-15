@@ -18,6 +18,12 @@ app.use(express.static(path.join(__dirname, '..', 'public')));
 
 app.set('io', io);
 
+// Shared, mutable driver-presence state (kept as a single object, not a bare
+// array, so routes/rides.js can read the *current* list via req.app.get()
+// even after connection/disconnection handlers reassign it below).
+const driverState = { list: [] };
+app.set('driverState', driverState);
+
 // Routes
 const rideRoutes = require('./routes/rides');
 const authRoutes = require('./routes/authRoute');
@@ -30,19 +36,18 @@ app.use('/api/messages', messageRoutes);
 connectDB();
 
 // Socket Logic
-let onlineDrivers = [];
 
 io.on('connection', (socket) => {
   console.log('Client connected:', socket.id);
 
   socket.on('driver-online', (data) => {
-    const existing = onlineDrivers.find(d => d.socketId === socket.id);
-    if (!existing) onlineDrivers.push({ socketId: socket.id, lat: data.lat, lng: data.lng, rideId: null });
+    const existing = driverState.list.find(d => d.socketId === socket.id);
+    if (!existing) driverState.list.push({ socketId: socket.id, lat: data.lat, lng: data.lng, rideId: null });
     broadcastStats();
   });
 
   socket.on('driver-location', (data) => {
-    const driver = onlineDrivers.find(d => d.socketId === socket.id);
+    const driver = driverState.list.find(d => d.socketId === socket.id);
     if (driver) { driver.lat = data.lat; driver.lng = data.lng; driver.rideId = data.rideId; }
     socket.broadcast.emit('driver-location', { lat: data.lat, lng: data.lng });
   });
@@ -50,7 +55,7 @@ io.on('connection', (socket) => {
   socket.on('driver-arrived', (data) => socket.broadcast.emit('driver-arrived', { rideId: data.rideId }));
   
   socket.on('driver-offline', () => {
-    onlineDrivers = onlineDrivers.filter(d => d.socketId !== socket.id);
+    driverState.list = driverState.list.filter(d => d.socketId !== socket.id);
     socket.broadcast.emit('driver-offline');
     broadcastStats();
   });
@@ -72,13 +77,13 @@ io.on('connection', (socket) => {
   });
 
   socket.on('disconnect', () => {
-    onlineDrivers = onlineDrivers.filter(d => d.socketId !== socket.id);
+    driverState.list = driverState.list.filter(d => d.socketId !== socket.id);
     broadcastStats();
   });
 
   function broadcastStats() {
-    const activeRides = onlineDrivers.filter(d => d.rideId !== null).length;
-    io.emit('driver-stats', { onlineDrivers: onlineDrivers.length, activeRides });
+    const activeRides = driverState.list.filter(d => d.rideId !== null).length;
+    io.emit('driver-stats', { onlineDrivers: driverState.list.length, activeRides });
   }
 });
 

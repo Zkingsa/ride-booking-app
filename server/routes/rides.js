@@ -2,16 +2,41 @@ const express = require('express');
 const router = express.Router();
 const Ride = require('../models/Ride');
 
+// How long idle drivers wait behind busy ones before a Saver ride is opened
+// up to everyone. Keeps the "cheaper but slower" trade-off honest instead of
+// just being a label with no real effect.
+const SAVER_IDLE_DELAY_MS = 45000;
+
 // POST /api/rides - Create a new ride (Rider)
 router.post('/', async (req, res) => {
   try {
-    const { pickup, dropoff, cost, riderId } = req.body;
-    const ride = new Ride({ pickup, dropoff, cost, riderId });
+    const { pickup, dropoff, cost, riderId, rideType, seats } = req.body;
+    const ride = new Ride({ pickup, dropoff, cost, riderId, rideType, seats });
     await ride.save();
-    
+
     const io = req.app.get('io');
-    io.emit('new-ride', ride);
-    
+    const driverState = req.app.get('driverState');
+
+    if (rideType === 'saver' && driverState && driverState.list.length > 0) {
+      // Saver rides are matched with a driver who is already out on a trip and
+      // about to finish, so those drivers get the request first...
+      const busySockets = driverState.list.filter(d => d.rideId).map(d => d.socketId);
+      busySockets.forEach(socketId => io.to(socketId).emit('new-ride', ride));
+
+      // ...and everyone else only sees it after a delay, unless it's still
+      // pending by then (i.e. no soon-to-be-free driver picked it up).
+      setTimeout(async () => {
+        try {
+          const stillPending = await Ride.findById(ride._id);
+          if (stillPending && stillPending.status === 'pending') {
+            io.emit('new-ride', stillPending);
+          }
+        } catch (e) { /* ride may have been removed/updated; ignore */ }
+      }, SAVER_IDLE_DELAY_MS);
+    } else {
+      io.emit('new-ride', ride);
+    }
+
     res.status(201).json(ride);
   } catch (err) {
     res.status(400).json({ error: err.message });
