@@ -14,7 +14,12 @@ const rideSchema = new mongoose.Schema({
     enum: ['pending', 'accepted', 'completed'],
     default: 'pending'
   },
-  cost: { type: Number, default: 0 }, // ✅ NEW FIELD for wallet tracking
+  cost: { type: Number, default: 0 },
+  
+  // ✅ NEW FIELDS FOR PRIVACY
+  riderId: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
+  driverId: { type: mongoose.Schema.Types.ObjectId, ref: 'User', default: null },
+  
   createdAt: {
     type: Date,
     default: Date.now

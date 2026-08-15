@@ -2,384 +2,168 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>RideBook - Rider Dashboard</title>
-  
-  <!-- Leaflet CSS -->
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>RideBook - Bolt Style</title>
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
   <link rel="stylesheet" href="css/style.css">
-  
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap" rel="stylesheet">
   <style>
-    /* --- RIDER SPECIFIC STYLES --- */
-    #app {
-      display: flex;
-      height: 100vh;
-    }
-    #sidebar {
-      width: 350px;
-      padding: 20px;
-      background: #1a1a2e;
-      color: #ffffff;
-      overflow-y: auto;
-      flex-shrink: 0;
-    }
-    #sidebar h1 {
-      color: #00d4aa;
-      margin: 0;
-    }
-    .sidebar-header {
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-      margin-bottom: 15px;
-    }
-    .logout-btn {
-      background: #ff6b6b;
-      padding: 5px 15px;
-      font-size: 0.8rem;
-      border: none;
-      border-radius: 6px;
-      color: #ffffff;
-      cursor: pointer;
-      font-weight: 600;
-    }
-    #map {
-      flex: 1;
-      height: 100vh;
-    }
+    * { box-sizing: border-box; }
+    body { margin: 0; background: #0d0d1a; color: #ffffff; font-family: 'Inter', sans-serif; overflow: hidden; }
+    #rider-app { height: 100vh; width: 100vw; position: relative; overflow: hidden; background: #0d0d1a; }
+
+    /* --- BOTTOM NAV --- */
+    #bottom-nav { position: absolute; bottom: 0; left: 0; right: 0; height: 80px; background: #15152a; border-top: 1px solid #2a2a4e; display: flex; justify-content: space-around; align-items: center; z-index: 20; padding-bottom: env(safe-area-inset-bottom); }
+    .nav-item { display: flex; flex-direction: column; align-items: center; color: #6b6b8d; cursor: pointer; background: transparent; border: none; font-family: 'Inter', sans-serif; }
+    .nav-item.active { color: #00d4aa; }
+    .nav-item .icon { font-size: 1.6rem; }
+    .nav-item .label { font-size: 0.7rem; margin-top: 4px; }
+
+    /* --- HOME SCREEN --- */
+    #home-screen { position: absolute; top: 0; left: 0; right: 0; bottom: 80px; background: #0d0d1a; z-index: 4; padding: 20px; overflow-y: auto; display: block; }
     
-    /* DRIVER STATUS PANEL */
-    #driver-status-panel {
-      display: flex;
-      gap: 10px;
-      margin-bottom: 15px;
-      flex-wrap: wrap;
-    }
-    .status-box {
-      flex: 1;
-      background: #16213e;
-      padding: 10px;
-      border-radius: 6px;
-      text-align: center;
-      border-left: 3px solid #00d4aa;
-    }
-    .status-box.gold {
-      border-color: #ffd700;
-    }
-    .status-label {
-      display: block;
-      font-size: 0.7rem;
-      color: #777799;
-    }
-    .status-count {
-      display: block;
-      font-size: 1.2rem;
-      font-weight: bold;
-      color: #ffffff;
-      margin-top: 2px;
-    }
+    /* --- TOP BAR --- */
+    .home-top-bar { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 20px; }
+    .home-title { font-size: 1.8rem; font-weight: 700; color: #ffffff; line-height: 1.2; }
+    .profile-btn { background: #15152a; border: 1px solid #2a2a4e; border-radius: 50%; width: 44px; height: 44px; display: flex; align-items: center; justify-content: center; color: #ffffff; font-size: 1.4rem; cursor: pointer; transition: all 0.3s; flex-shrink: 0; margin-top: 4px; }
+    .profile-btn:hover { border-color: #00d4aa; }
+
+    /* --- SEARCH INPUTS --- */
+    #search-container { margin-bottom: 20px; }
+    .input-group { background: #15152a; border-radius: 12px; padding: 4px 16px; margin-bottom: 12px; display: flex; align-items: center; border: 1px solid #2a2a4e; position: relative; }
+    .input-group:focus-within { border-color: #00d4aa; }
+    .input-group input { flex: 1; background: transparent; border: none; padding: 14px 0; color: #ffffff; font-size: 1rem; font-family: 'Inter', sans-serif; outline: none; }
+    .input-group input::placeholder { color: #6b6b8d; }
+    .input-group .icon { margin-right: 12px; color: #6b6b8d; }
+
+    /* --- MAP SCREEN --- */
+    /* Kept in the layout (not display:none) so the Leaflet map can initialize
+       immediately on load — needed so a GPS fix can drop a real pickup pin
+       before the user ever opens this screen. */
+    #map-screen { position: absolute; top: 0; left: 0; right: 0; bottom: 0; z-index: -1; opacity: 0; pointer-events: none; background: #0d0d1a; transition: opacity 0.15s ease; }
+    #map-screen.open { z-index: 10; opacity: 1; pointer-events: auto; }
+    #rider-map { height: 100vh; width: 100vw; z-index: 0; }
+    .map-top-bar { position: absolute; top: 40px; left: 16px; right: 16px; background: #15152a; border-radius: 16px; padding: 12px 16px; display: flex; align-items: center; justify-content: space-between; z-index: 10; border: 1px solid #2a2a4e; }
+    .map-top-bar .close-map { font-size: 1.5rem; cursor: pointer; color: #ffffff; background: none; border: none; }
+    .map-top-bar .route-info { font-weight: 500; color: #ffffff; flex: 1; text-align: center; font-size: 0.9rem; }
+
+    /* --- RIDE OPTIONS SHEET --- */
+    .ride-options-sheet { position: absolute; bottom: 0; left: 0; right: 0; background: #15152a; border-radius: 24px 24px 0 0; padding: 20px; z-index: 10; max-height: 50vh; overflow-y: auto; border-top: 1px solid #2a2a4e; }
+    .ride-option { display: flex; align-items: center; padding: 12px 0; border-bottom: 1px solid #2a2a4e; cursor: pointer; }
+    .ride-option:last-child { border-bottom: none; }
+    .ride-option .car-icon { font-size: 2rem; margin-right: 16px; width: 50px; text-align: center; }
+    .ride-option .details { flex: 1; }
+    .ride-option .details .name { font-weight: 600; color: #ffffff; }
+    .ride-option .details .sub { font-size: 0.8rem; color: #6b6b8d; }
+    .ride-option .price { font-weight: 700; color: #00d4aa; text-align: right; }
     
-    /* INPUTS & CONTROLS */
-    #search-container {
-      margin-bottom: 15px;
-      width: 100%;
-    }
-    #search-container label {
-      display: block;
-      font-size: 0.8rem;
-      color: #aaaaaa;
-      margin-bottom: 4px;
-    }
-    #search-container label:last-of-type {
-      margin-top: 10px;
-    }
-    .input-wrapper {
-      position: relative;
-      width: 100%;
-    }
-    #pickup-search, #dropoff-search {
-      width: 100%;
-      padding: 10px 35px 10px 14px;
-      border-radius: 6px;
-      border: none;
-      background: #16213e;
-      color: #ffffff;
-      font-size: 0.9rem;
-      outline: 2px solid transparent;
-      transition: outline 0.2s ease;
-      box-sizing: border-box;
-    }
-    #pickup-search:focus, #dropoff-search:focus {
-      outline: 2px solid #00d4aa;
-    }
-    .clear-btn {
-      position: absolute;
-      right: 12px;
-      top: 50%;
-      transform: translateY(-50%);
-      color: #777799;
-      cursor: pointer;
-      font-size: 1rem;
-      font-weight: bold;
-      display: none;
-      -webkit-user-select: none;
-      user-select: none;
-    }
-    .clear-btn:hover {
-      color: #ff6b6b;
-    }
-    .input-wrapper.active .clear-btn {
-      display: block;
-    }
-    
-    .instruction {
-      font-size: 0.9rem;
-      color: #cccccc;
-      margin-bottom: 15px;
-    }
-    #ride-controls {
-      display: flex;
-      gap: 10px;
-      margin-bottom: 15px;
-    }
-    #ride-controls.hidden {
-      display: none;
-    }
-    button {
-      padding: 10px 16px;
-      border: none;
-      border-radius: 6px;
-      cursor: pointer;
-      font-size: 0.9rem;
-      font-weight: 600;
-    }
-    #request-btn {
-      background: #00d4aa;
-      color: #1a1a2e;
-      flex: 1;
-    }
-    #reset-btn {
-      background: #444466;
-      color: #ffffff;
-    }
-    
-    /* RIDE LIST */
-    #rides-list {
-      list-style: none;
-      padding: 0;
-    }
-    #rides-list li {
-      background: #16213e;
-      padding: 12px;
-      border-radius: 6px;
-      margin-bottom: 8px;
-      font-size: 0.85rem;
-      line-height: 1.5;
-    }
-    #rides-list li .status {
-      display: inline-block;
-      padding: 2px 8px;
-      border-radius: 10px;
-      font-size: 0.75rem;
-      font-weight: 600;
-      text-transform: uppercase;
-      margin-top: 5px;
-    }
-    #rides-list li .status.pending {
-      background: #ffc107;
-      color: #1a1a2e;
-    }
-    #rides-list li .status.accepted {
-      background: #00d4aa;
-      color: #1a1a2e;
-    }
-    #rides-list li .status.completed {
-      background: #6c757d;
-      color: #ffffff;
-    }
-    .chat-btn {
-      margin-top: 5px;
-      background: #6c63ff;
-      color: #ffffff;
-      padding: 4px 12px;
-      font-size: 0.8rem;
-    }
-    
-    /* AUTOCOMPLETE DROPDOWN */
-    .autocomplete-dropdown {
-      position: absolute;
-      top: 100%;
-      left: 0;
-      width: 100%;
-      background: #16213e;
-      border: 1px solid #00d4aa;
-      border-top: none;
-      border-radius: 0 0 6px 6px;
-      max-height: 200px;
-      overflow-y: auto;
-      z-index: 1000;
-      box-shadow: 0 4px 12px rgba(0,0,0,0.3);
-    }
-    .autocomplete-dropdown div {
-      padding: 10px 14px;
-      cursor: pointer;
-      color: #cccccc;
-      border-bottom: 1px solid #2a2a4e;
-      font-size: 0.9rem;
-      transition: background 0.2s;
-    }
-    .autocomplete-dropdown div:hover {
-      background: #00d4aa;
-      color: #1a1a2e;
-    }
-    
-    /* CHAT MODAL */
-    #chat-modal {
-      display: none;
-      position: fixed;
-      bottom: 20px;
-      right: 20px;
-      width: 320px;
-      height: 400px;
-      background: #16213e;
-      border-radius: 12px;
-      box-shadow: 0 4px 20px rgba(0,0,0,0.6);
-      z-index: 2000;
-      flex-direction: column;
-      font-family: sans-serif;
-    }
-    .chat-header {
-      padding: 15px;
-      background: #1a1a2e;
-      border-radius: 12px 12px 0 0;
-      display: flex;
-      justify-content: space-between;
-    }
-    .chat-title {
-      color: #00d4aa;
-      font-weight: bold;
-    }
-    .chat-close {
-      cursor: pointer;
-      color: #ff6b6b;
-    }
-    #chat-messages {
-      flex: 1;
-      overflow-y: auto;
-      padding: 15px;
-      display: flex;
-      flex-direction: column;
-      gap: 8px;
-    }
-    .chat-input-area {
-      padding: 10px;
-      display: flex;
-      gap: 8px;
-      border-top: 1px solid #2a2a4e;
-    }
-    #chat-input {
-      flex: 1;
-      padding: 8px;
-      border-radius: 6px;
-      border: none;
-      background: #0f0f1e;
-      color: #ffffff;
-    }
-    #send-chat-btn {
-      padding: 8px 16px;
-      background: #00d4aa;
-      border: none;
-      border-radius: 6px;
-      color: #1a1a2e;
-      cursor: pointer;
-      font-weight: 600;
-    }
-    #chat-messages div {
-      padding: 8px 12px;
-      border-radius: 8px;
-      max-width: 80%;
-      margin-bottom: 4px;
-    }
-    #chat-messages .me {
-      align-self: flex-end;
-      background: #00d4aa;
-      color: #1a1a2e;
-    }
-    #chat-messages .them {
-      align-self: flex-start;
-      background: #2a2a4e;
-      color: #ffffff;
-    }
+    .select-ride-btn { width: 100%; padding: 16px; background: #00d4aa; color: #0d0d1a; border: none; border-radius: 40px; font-weight: 700; font-size: 1.1rem; cursor: pointer; margin-top: 16px; }
+
+    /* --- LIVE TRACKING PANEL --- */
+    .tracking-panel.hidden { display: none; }
+    .tracking-status { font-size: 1.05rem; font-weight: 600; color: #ffffff; text-align: center; padding: 8px 0 4px; }
+    .tracking-eta { font-size: 0.85rem; color: #00d4aa; text-align: center; font-weight: 600; margin-bottom: 4px; }
+    .driver-car-icon { background: transparent; border: none; font-size: 1.7rem; line-height: 32px; text-align: center; filter: drop-shadow(0 2px 4px rgba(0,0,0,0.6)); }
+
+    /* --- PROFILE MODAL --- */
+    #profile-modal { position: absolute; top: 80px; right: 20px; width: 280px; background: #15152a; border-radius: 16px; padding: 20px; z-index: 30; display: none; border: 1px solid #2a2a4e; box-shadow: 0 8px 30px rgba(0,0,0,0.8); }
+    #profile-modal.open { display: block; }
+    .profile-modal-header { font-size: 1.2rem; font-weight: 600; color: #ffffff; margin-bottom: 16px; border-bottom: 1px solid #2a2a4e; padding-bottom: 12px; display: flex; justify-content: space-between; }
+    .profile-modal-header span { cursor: pointer; color: #6b6b8d; }
+    .profile-detail { margin-bottom: 12px; }
+    .profile-detail .label { font-size: 0.8rem; color: #6b6b8d; }
+    .profile-detail .value { font-size: 1rem; font-weight: 500; color: #ffffff; }
+    .logout-btn-modal { width: 100%; padding: 12px; background: #ff6b6b; color: #ffffff; border: none; border-radius: 8px; font-weight: 600; cursor: pointer; margin-top: 12px; }
+
+    /* --- RIDES PAGE --- */
+    #page-container { position: absolute; top: 0; left: 0; right: 0; bottom: 80px; background: #0d0d1a; z-index: 5; overflow-y: auto; padding: 20px; display: none; }
+    #page-container.open { display: block; }
+    .page-header { font-size: 1.5rem; font-weight: 700; margin-bottom: 20px; color: #ffffff; }
+    #rides-list-container { padding-bottom: 20px; }
+    .ride-history-item { display: flex; align-items: center; padding: 12px 0; border-bottom: 1px solid #15152a; }
+    .ride-history-item .h-info { flex: 1; }
+    .ride-history-item .h-info .addr { font-weight: 500; color: #ffffff; font-size: 0.9rem; }
+    .ride-history-item .h-price { font-weight: 600; color: #00d4aa; }
+
+    /* --- AUTOCOMPLETE DROPDOWN --- */
+    .autocomplete-dropdown { position: absolute; top: 100%; left: 0; width: 100%; background: #15152a; border: 1px solid #2a2a4e; border-top: none; border-radius: 0 0 12px 12px; max-height: 200px; overflow-y: auto; z-index: 1000; }
+    .autocomplete-dropdown div { padding: 12px 16px; cursor: pointer; color: #ffffff; border-bottom: 1px solid #2a2a4e; }
+    .autocomplete-dropdown div:hover { background: #00d4aa; }
   </style>
 </head>
 <body>
-  <div id="app">
-    <div id="sidebar">
-      <div class="sidebar-header">
-        <h1>RideBook</h1>
-        <button class="logout-btn" id="logout-btn">Logout</button>
-      </div>
-      
-      <!-- DRIVER STATUS PANEL -->
-      <div id="driver-status-panel">
-        <div class="status-box">
-          <span class="status-label">🟢 Online Drivers</span>
-          <span class="status-count" id="online-driver-count">0</span>
-        </div>
-        <div class="status-box">
-          <span class="status-label">🚗 Active Rides</span>
-          <span class="status-count" id="active-ride-count">0</span>
-        </div>
-        <div class="status-box gold">
-          <span class="status-label">💰 My Balance</span>
-          <span class="status-count" id="my-balance">R0.00</span>
-        </div>
-      </div>
-      
-      <div id="search-container">
-        <label for="pickup-search">Pickup Location</label>
-        <div class="input-wrapper">
-          <input type="text" id="pickup-search" placeholder="e.g. Greyville House, Gqeberha" />
-          <span class="clear-btn" id="clear-pickup">✕</span>
-        </div>
-        
-        <label for="dropoff-search">Dropoff Location</label>
-        <div class="input-wrapper">
-          <input type="text" id="dropoff-search" placeholder="e.g. Gateway Mall, Umhlanga" />
-          <span class="clear-btn" id="clear-dropoff">✕</span>
-        </div>
-      </div>
-      
-      <p class="instruction" id="instruction">Type a place (Press Enter) or click the map</p>
-      
-      <div id="ride-controls" class="hidden">
-        <button id="request-btn">Request Ride</button>
-        <button id="reset-btn">Reset</button>
-      </div>
-      
-      <h2>My Ride History</h2>
-      <ul id="rides-list"></ul>
+  <div id="rider-app">
+    
+    <!-- BOTTOM NAV -->
+    <div id="bottom-nav">
+      <button class="nav-item active" data-page="home"><span class="icon">🏠</span><span class="label">Home</span></button>
+      <button class="nav-item" data-page="rides"><span class="icon">📋</span><span class="label">Rides</span></button>
     </div>
-    <div id="map"></div>
+
+    <!-- HOME SCREEN -->
+    <div id="home-screen">
+      <div class="home-top-bar">
+        <div class="home-title">Where are you going?</div>
+        <button class="profile-btn" id="profile-btn">👤</button>
+      </div>
+      
+      <!-- SEARCH BOXES -->
+      <div id="search-container">
+        <div class="input-group">
+          <span class="icon">📍</span>
+          <input type="text" id="pickup-search" placeholder="Detecting location..." />
+        </div>
+        <div class="input-group">
+          <span class="icon">🏁</span>
+          <input type="text" id="dropoff-search" placeholder="Where to?" />
+        </div>
+        <button id="open-map-btn" style="width:100%; margin-top:10px; padding:14px; background:#00d4aa; color:#0d0d1a; border:none; border-radius:12px; font-weight:600; cursor:pointer;">Find Rides</button>
+      </div>
+    </div>
+
+    <!-- MAP SCREEN -->
+    <div id="map-screen">
+      <div id="rider-map"></div>
+      <div class="map-top-bar">
+        <button class="close-map" id="close-map-btn">✕</button>
+        <span class="route-info" id="route-info-text">Select Pickup & Dropoff</span>
+      </div>
+      <div class="ride-options-sheet">
+        <div id="ride-options-list" style="color:#6b6b8d; text-align:center; margin-bottom:10px;">
+          Tap the map to set locations
+        </div>
+        <button class="select-ride-btn" id="confirm-ride-btn">Request Ride</button>
+
+        <!-- LIVE DRIVER TRACKING (shown once a ride is requested) -->
+        <div class="tracking-panel hidden" id="tracking-panel">
+          <div class="tracking-status" id="tracking-status">🔎 Looking for a nearby driver...</div>
+          <div class="tracking-eta" id="tracking-eta"></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- PROFILE MODAL -->
+    <div id="profile-modal">
+      <div class="profile-modal-header">
+        <span>Profile</span>
+        <span id="close-profile">✕</span>
+      </div>
+      <div class="profile-detail"><div class="label">Name</div><div class="value" id="profile-name">Loading...</div></div>
+      <div class="profile-detail"><div class="label">Email</div><div class="value" id="profile-email">Loading...</div></div>
+      <div class="profile-detail"><div class="label">User ID</div><div class="value" id="profile-id">Loading...</div></div>
+      <button class="logout-btn-modal" id="logout-btn">🚪 Logout</button>
+    </div>
+
+    <!-- RIDES PAGE -->
+    <div id="page-container" data-page="rides">
+      <div class="page-header">My Ride History</div>
+      <div id="rides-list-container"></div>
+    </div>
   </div>
 
-  <!-- CHAT MODAL -->
-  <div id="chat-modal">
-    <div class="chat-header">
-      <span class="chat-title">💬 Ride Chat</span>
-      <span class="chat-close" id="close-chat">✕</span>
-    </div>
-    <div id="chat-messages"></div>
-    <div class="chat-input-area">
-      <input type="text" id="chat-input" placeholder="Type a message...">
-      <button id="send-chat-btn">Send</button>
-    </div>
-  </div>
-  
-  <!-- Leaflet JS -->
+  <!-- ✅ Scripts: Leaflet, Socket, and ONLY app.js (map.js is removed) -->
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
   <script src="/socket.io/socket.io.js"></script>
-  <script src="js/map.js"></script>
   <script src="js/app.js"></script>
 </body>
 </html>
