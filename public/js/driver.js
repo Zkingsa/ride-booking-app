@@ -532,7 +532,9 @@ async function renderEarnPage() {
   try {
     const res = await fetch(`/api/rides?role=driver&driverId=${driverId}`);
     const rides = await res.json();
-    const gross = rides.filter(r => r.status === 'completed').reduce((s, r) => s + parseFloat(r.cost || 0), 0);
+    const gross = (Array.isArray(rides) ? rides : [])
+      .filter(r => r.status === 'completed' && String(r.driverId) === String(driverId))
+      .reduce((s, r) => s + parseFloat(r.cost || 0), 0);
     const net = netOfCommission(gross);
     const available = Math.max(0, net - totalCashedOut());
 
@@ -570,7 +572,9 @@ async function renderRidesPage() {
   try {
     const res = await fetch(`/api/rides?role=driver&driverId=${driverId}`);
     const rides = await res.json();
-    const completed = rides.filter(r => r.status === 'completed');
+    // Only THIS driver's completed rides belong in their history.
+    const completed = (Array.isArray(rides) ? rides : [])
+      .filter(r => r.status === 'completed' && String(r.driverId) === String(driverId));
     
     let html = '';
     completed.forEach(r => {
@@ -1183,7 +1187,10 @@ async function updateEarnings() {
   try {
     const res = await fetch(`/api/rides?role=driver&driverId=${driverId}`);
     const rides = await res.json();
-    const total = rides.filter(r => r.status === 'completed').reduce((sum, r) => sum + parseFloat(r.cost || 0), 0);
+    // Only this driver's completed fares count toward their earnings.
+    const total = (Array.isArray(rides) ? rides : [])
+      .filter(r => r.status === 'completed' && String(r.driverId) === String(driverId))
+      .reduce((sum, r) => sum + parseFloat(r.cost || 0), 0);
     const net = netOfCommission(total); // the driver keeps 90% after the 10% commission
     document.getElementById('total-earnings').textContent = `R${net.toFixed(2)}`;
   } catch { }

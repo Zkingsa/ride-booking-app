@@ -113,14 +113,11 @@ router.get('/', async (req, res) => {
 
     let query = {};
 
-    // 👑 RIDER LOGIC: Only show their own rides + pending ones
+    // 👑 RIDER LOGIC: Only this rider's own rides — never other riders' rides
+    // (the old "show all pending rides" here was leaking other users' rides
+    // into a rider's history).
     if (role === 'rider' && riderId) {
-      query = { 
-        $or: [
-          { riderId: riderId }, 
-          { status: 'pending' } // Riders can see pending rides globally
-        ]
-      };
+      query = { riderId };
     } 
     // 🚗 DRIVER LOGIC: Show pending rides (to accept) + their own history
     else if (role === 'driver' && driverId) {

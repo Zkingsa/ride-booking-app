@@ -1065,13 +1065,15 @@ document.addEventListener('DOMContentLoaded', () => {
     try {
       const res = await fetch(`/api/rides?role=rider&riderId=${userId}`);
       const rides = await res.json();
+      // Defense-in-depth: only ever render THIS rider's own rides.
+      const mine = (Array.isArray(rides) ? rides : []).filter(r => String(r.riderId) === String(userId));
       const container = document.getElementById('rides-list-container');
       container.innerHTML = '';
-      if (rides.length === 0) {
+      if (mine.length === 0) {
         container.innerHTML = '<div style="color:#6b6b8d; text-align:center; padding:40px;">No rides yet.</div>';
         return;
       }
-      rides.forEach(ride => {
+      mine.forEach(ride => {
         const date = new Date(ride.createdAt).toLocaleString();
         const rt = RIDE_TYPES.find(r => r.id === ride.rideType) || RIDE_TYPES[2];
         const from = ride.pickupAddress || `${ride.pickup.lat.toFixed(4)}, ${ride.pickup.lng.toFixed(4)}`;
