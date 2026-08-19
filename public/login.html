@@ -99,20 +99,50 @@
       <option value="rider">Rider (Passenger)</option>
       <option value="driver">Driver</option>
     </select>
+
+    <!-- Shown only when registering as a driver -->
+    <div id="vehicle-fields" class="hidden-field">
+      <input type="text" id="vehicle-make-input" placeholder="Car name / model (e.g. Toyota Corolla)">
+      <input type="text" id="vehicle-reg-input" placeholder="Registration / plate number">
+      <input type="text" id="vehicle-color-input" placeholder="Vehicle color">
+      <select id="vehicle-type-input" aria-label="Select vehicle type">
+        <option value="">Vehicle type...</option>
+        <option value="motorcycle">Motorcycle</option>
+        <option value="hatchback">Hatchback</option>
+        <option value="sedan">Sedan</option>
+        <option value="minibus">Mini bus</option>
+      </select>
+      <input type="number" id="vehicle-seats-input" placeholder="Number of passenger seats" min="1" max="30">
+    </div>
     
     <button id="submit-btn">Login</button>
     <p class="toggle-link" id="toggle-auth">Don't have an account? Register</p>
+    <a href="forgot-password.html" class="toggle-link" id="forgot-link" style="font-size:0.85rem; margin-top:6px;">Forgot password?</a>
     <div class="error-msg" id="error-msg"></div>
   </div>
 
   <script>
     const toggleText = document.getElementById('toggle-auth');
+    const forgotLink = document.getElementById('forgot-link');
     const formTitle = document.getElementById('form-title');
     const nameInput = document.getElementById('name-input');
     const roleInput = document.getElementById('role-input');
     const submitBtn = document.getElementById('submit-btn');
     const errorMsg = document.getElementById('error-msg');
+    const vehicleFields = document.getElementById('vehicle-fields');
+    const vehicleMakeInput = document.getElementById('vehicle-make-input');
+    const vehicleRegInput = document.getElementById('vehicle-reg-input');
+    const vehicleColorInput = document.getElementById('vehicle-color-input');
+    const vehicleTypeInput = document.getElementById('vehicle-type-input');
+    const vehicleSeatsInput = document.getElementById('vehicle-seats-input');
     let isLogin = true;
+
+    function refreshVehicleFieldsVisibility() {
+      const showVehicleFields = !isLogin && roleInput.value === 'driver';
+      vehicleFields.classList.toggle('visible-field', showVehicleFields);
+      vehicleFields.classList.toggle('hidden-field', !showVehicleFields);
+    }
+    roleInput.addEventListener('change', refreshVehicleFieldsVisibility);
 
     toggleText.addEventListener('click', () => {
       isLogin = !isLogin;
@@ -125,12 +155,15 @@
         nameInput.classList.add('hidden-field');
         roleInput.classList.remove('visible-field');
         roleInput.classList.add('hidden-field');
+        forgotLink.style.display = 'block';
       } else {
         nameInput.classList.remove('hidden-field');
         nameInput.classList.add('visible-field');
         roleInput.classList.remove('hidden-field');
         roleInput.classList.add('visible-field');
+        forgotLink.style.display = 'none';
       }
+      refreshVehicleFieldsVisibility();
       
       submitBtn.textContent = isLogin ? 'Login' : 'Register';
       toggleText.textContent = isLogin ? "Don't have an account? Register" : "Already have an account? Login";
@@ -144,15 +177,29 @@
       const password = document.getElementById('password-input').value.trim();
       const role = roleInput.value;
       const name = nameInput.value.trim();
+      const isDriverRegistration = !isLogin && role === 'driver';
+
+      const vehicle = isDriverRegistration ? {
+        make: vehicleMakeInput.value.trim(),
+        registration: vehicleRegInput.value.trim(),
+        color: vehicleColorInput.value.trim(),
+        type: vehicleTypeInput.value,
+        seats: vehicleSeatsInput.value ? parseInt(vehicleSeatsInput.value, 10) : null
+      } : null;
 
       if (!email || !password || (!isLogin && !name)) {
         errorMsg.textContent = 'Please fill in all fields.';
         errorMsg.style.display = 'block';
         return;
       }
+      if (isDriverRegistration && (!vehicle.make || !vehicle.registration || !vehicle.color || !vehicle.type || !vehicle.seats)) {
+        errorMsg.textContent = 'Please fill in your vehicle name, registration, color, type, and passenger seats.';
+        errorMsg.style.display = 'block';
+        return;
+      }
 
       const url = isLogin ? '/api/auth/login' : '/api/auth/register';
-      const body = isLogin ? { email, password } : { name, email, password, role };
+      const body = isLogin ? { email, password } : { name, email, password, role, vehicle };
 
       try {
         const res = await fetch(url, { 
@@ -179,6 +226,14 @@
             localStorage.setItem('userId', data.user.id);
             localStorage.setItem('userName', data.user.name);
             localStorage.setItem('userRole', data.user.role);
+            localStorage.setItem('payoutMethod', data.user.payoutMethod || 'card');
+            if (data.user.vehicle) {
+              localStorage.setItem('vehicleCategory', data.user.vehicle.category || '');
+              localStorage.setItem('vehicleInfo', JSON.stringify(data.user.vehicle));
+            } else {
+              localStorage.removeItem('vehicleCategory');
+              localStorage.removeItem('vehicleInfo');
+            }
 
             if (data.user.role === 'driver') {
               window.location.href = 'driver.html';
@@ -186,13 +241,16 @@
               window.location.href = 'index.html';
             }
           } else {
-            errorMsg.textContent = '✅ Registration successful! Please login.';
+            const CAT_LABEL = { bike: '🏍️ Bike', mini: '🚙 Mini', standard: '🚗 Standard', xl: '🚐 XL' };
+            errorMsg.textContent = data.category
+              ? `✅ Registration successful! Your vehicle is classified as ${CAT_LABEL[data.category] || data.category}. Please login.`
+              : '✅ Registration successful! Please login.';
             errorMsg.style.color = '#00d4aa';
             errorMsg.style.display = 'block';
             setTimeout(() => {
               toggleText.click();
               errorMsg.style.color = '#ff6b6b';
-            }, 2000);
+            }, 2500);
           }
         } else {
           // Show the exact error message from the server

@@ -9,6 +9,10 @@
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap" rel="stylesheet">
   <style>
     * { box-sizing: border-box; }
+    /* Hide scrollbars everywhere (Firefox + WebKit/Blink) while keeping the
+       content scrollable — cleaner "app" look on any orientation. */
+    * { scrollbar-width: none; -ms-overflow-style: none; }
+    *::-webkit-scrollbar { display: none; }
     body { margin: 0; background: #0d0d1a; color: #ffffff; font-family: 'Inter', sans-serif; overflow: hidden; }
     #rider-app { height: 100vh; width: 100vw; position: relative; overflow: hidden; background: #0d0d1a; }
 
@@ -46,23 +50,34 @@
     #map-screen { position: absolute; top: 0; left: 0; right: 0; bottom: 0; z-index: -1; opacity: 0; pointer-events: none; background: #0d0d1a; transition: opacity 0.15s ease; }
     #map-screen.open { z-index: 10; opacity: 1; pointer-events: auto; }
     #rider-map { height: 100vh; width: 100vw; z-index: 0; }
-    .map-top-bar { position: absolute; top: 40px; left: 16px; right: 16px; background: #15152a; border-radius: 16px; padding: 12px 16px; display: flex; align-items: center; justify-content: space-between; z-index: 10; border: 1px solid #2a2a4e; }
-    .map-top-bar .close-map { font-size: 1.5rem; cursor: pointer; color: #ffffff; background: none; border: none; }
-    .map-top-bar .route-info { font-weight: 500; color: #ffffff; flex: 1; text-align: center; font-size: 0.9rem; }
+    .map-top-bar { position: absolute; top: 40px; left: 16px; right: 16px; background: #15152a; border-radius: 16px; padding: 12px 14px; display: flex; align-items: center; justify-content: space-between; gap: 8px; z-index: 10; border: 1px solid #2a2a4e; }
+    .map-top-bar .close-map { font-size: 1.4rem; cursor: pointer; color: #ffffff; background: none; border: none; flex-shrink: 0; line-height: 1; }
+    .map-top-bar .route-info { font-weight: 500; color: #ffffff; flex: 1; text-align: center; font-size: 0.85rem; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .online-drivers-badge { position: absolute; top: 100px; left: 16px; right: 16px; width: fit-content; max-width: calc(100% - 32px); background: rgba(21, 21, 42, 0.9); backdrop-filter: blur(10px); border: 1px solid #2a2a4e; color: #00d4aa; font-size: 0.7rem; font-weight: 600; padding: 4px 10px; border-radius: 12px; z-index: 10; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .online-drivers-badge.searching { color: #f5a623; }
 
-    /* --- RIDE OPTIONS SHEET --- */
-    .ride-options-sheet { position: absolute; bottom: 0; left: 0; right: 0; background: #15152a; border-radius: 24px 24px 0 0; padding: 20px; z-index: 10; max-height: 50vh; overflow-y: auto; border-top: 1px solid #2a2a4e; }
+    /* --- RIDE OPTIONS SHEET ---
+       Capped at 50% of the app ("the middle"), never past it, and scrolls
+       internally past that cap. Sits above the 80px bottom nav so every item
+       (including the last ride tier / Request button) is fully visible when
+       scrolled to the bottom. Uses % of the app card (not vh) so it stays at
+       the middle on any screen/orientation, including framed desktop. */
+    .ride-options-sheet { position: absolute; bottom: 80px; left: 0; right: 0; background: #15152a; border-radius: 24px 24px 0 0; padding: 20px; z-index: 10; max-height: calc(50% - 80px); height: auto; overflow-y: auto; border-top: 1px solid #2a2a4e; scrollbar-width: none; -ms-overflow-style: none; }
+    .ride-options-sheet::-webkit-scrollbar { display: none; }
     .ride-option { display: flex; align-items: center; padding: 12px 0; border-bottom: 1px solid #2a2a4e; cursor: pointer; }
     .ride-option:last-child { border-bottom: none; }
     .ride-option .car-icon { font-size: 2rem; margin-right: 16px; width: 50px; text-align: center; }
-    .ride-option .details { flex: 1; }
+    .ride-option .details { flex: 1; min-width: 0; }
     .ride-option .details .name { font-weight: 600; color: #ffffff; }
     .ride-option .details .sub { font-size: 0.8rem; color: #6b6b8d; }
+    .ride-option .right-col { display: flex; flex-direction: column; align-items: flex-end; gap: 6px; flex-shrink: 0; margin-left: 10px; }
     .ride-option .price { font-weight: 700; color: #00d4aa; text-align: right; }
     .ride-option { border-radius: 12px; transition: background 0.15s; padding-left: 8px; padding-right: 8px; }
     .ride-option:hover { background: #1c1c36; }
     .ride-option.selected { background: rgba(0, 212, 170, 0.12); border: 1px solid #00d4aa; border-bottom: 1px solid #00d4aa; }
     .ride-option .sub.saver-sub { color: #00d4aa; }
+    .request-row-btn { background: #00d4aa; color: #0d0d1a; border: none; padding: 6px 14px; border-radius: 20px; font-weight: 700; font-size: 0.8rem; cursor: pointer; white-space: nowrap; }
+    .request-row-btn:active { transform: scale(0.96); }
 
     .select-ride-btn { width: 100%; padding: 16px; background: #00d4aa; color: #0d0d1a; border: none; border-radius: 40px; font-weight: 700; font-size: 1.1rem; cursor: pointer; margin-top: 16px; }
 
@@ -70,7 +85,69 @@
     .tracking-panel.hidden { display: none; }
     .tracking-status { font-size: 1.05rem; font-weight: 600; color: #ffffff; text-align: center; padding: 8px 0 4px; }
     .tracking-eta { font-size: 0.85rem; color: #00d4aa; text-align: center; font-weight: 600; margin-bottom: 4px; }
+    .tracking-motion { font-size: 0.8rem; color: #00d4aa; text-align: center; font-weight: 600; margin-bottom: 4px; }
+    .tracking-wait { font-size: 0.85rem; color: #f5a623; text-align: center; font-weight: 600; margin-bottom: 4px; }
+    .tracking-code { font-size: 0.8rem; color: #6b6b8d; text-align: center; margin-bottom: 4px; }
     .driver-car-icon { background: transparent; border: none; font-size: 1.7rem; line-height: 32px; text-align: center; filter: drop-shadow(0 2px 4px rgba(0,0,0,0.6)); }
+
+    /* --- DRIVER INFO + CHAT (shown once a ride is accepted) --- */
+    .driver-info-card.hidden { display: none; }
+    .driver-info-card { background: #1c1c36; border: 1px solid #2a2a4e; border-radius: 12px; padding: 12px; margin: 8px 0; display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+    .driver-info-card .who { min-width: 0; }
+    .driver-info-card .who .name { font-weight: 600; color: #ffffff; }
+    .driver-info-card .who .vehicle { font-size: 0.8rem; color: #6b6b8d; }
+    .chat-btn { background: #00d4aa; color: #0d0d1a; border: none; padding: 8px 16px; border-radius: 20px; font-weight: 700; font-size: 0.85rem; cursor: pointer; flex-shrink: 0; }
+    .call-btn { background: transparent; color: #00d4aa; border: 1px solid #00d4aa; padding: 8px 12px; border-radius: 20px; font-weight: 700; font-size: 0.9rem; cursor: pointer; flex-shrink: 0; }
+    .payment-pill { flex-shrink: 0; background: #1f1f3a; border: 1px solid #2a2a4e; color: #ffffff; font-size: 0.75rem; padding: 7px 12px; border-radius: 16px; cursor: pointer; margin-left: 8px; white-space: nowrap; }
+
+    /* IN-APP CALL (signaling only — a ring/accept/end-call UI, no real audio
+       transport in this demo; see startCall/etc. in app.js) */
+    #call-overlay { position: absolute; inset: 0; background: rgba(8,8,16,0.97); z-index: 60; display: flex; flex-direction: column; align-items: center; justify-content: center; color: #fff; }
+    #call-overlay.hidden { display: none; }
+    #call-avatar { width: 90px; height: 90px; border-radius: 50%; background: #1c1c36; display: flex; align-items: center; justify-content: center; font-size: 2.4rem; margin-bottom: 16px; }
+    #call-name { font-size: 1.3rem; font-weight: 700; }
+    #call-status { color: #6b6b8d; margin: 6px 0 30px; font-size: 0.9rem; }
+    #call-actions { display: flex; gap: 24px; }
+    .call-action-btn { width: 60px; height: 60px; border-radius: 50%; border: none; font-size: 1.4rem; cursor: pointer; display: flex; align-items: center; justify-content: center; }
+    .call-action-btn.accept { background: #00d4aa; }
+    .call-action-btn.decline, .call-action-btn.end { background: #ff6b6b; }
+
+    /* --- CONFIRMATION CODE MODAL (rider sets a 4-digit code at booking) --- */
+    #code-modal { position: absolute; inset: 0; background: rgba(8,8,16,0.92); z-index: 70; display: flex; align-items: center; justify-content: center; }
+    #code-modal.hidden { display: none; }
+    .code-box { background: #16213e; border: 1px solid #2a2a4e; border-radius: 16px; padding: 24px; width: min(320px, 86%); text-align: center; }
+    .code-box h3 { margin: 0 0 8px; color: #00d4aa; }
+    .code-box p { font-size: 0.85rem; color: #aaaaaa; margin: 0 0 16px; }
+    .code-box input { width: 100%; padding: 14px; box-sizing: border-box; border-radius: 8px; border: 1px solid #2a2a4e; background: #0f0f1e; color: #fff; font-size: 1.4rem; text-align: center; letter-spacing: 8px; outline: none; }
+    .code-box input:focus { border-color: #00d4aa; }
+    .code-error { color: #ff6b6b; font-size: 0.8rem; min-height: 18px; margin-top: 8px; }
+    .code-actions { display: flex; gap: 10px; margin-top: 12px; }
+    .code-actions button { flex: 1; padding: 12px; border: none; border-radius: 8px; font-weight: 700; cursor: pointer; font-size: 0.9rem; }
+    #code-cancel { background: #1f1f3a; color: #aaa; }
+    #code-confirm { background: #00d4aa; color: #0d0d1a; }
+
+    /* --- ADD CARD MODAL (rider enters card details — demo only) --- */
+    #card-modal { position: absolute; inset: 0; background: rgba(8,8,16,0.94); z-index: 72; display: flex; align-items: center; justify-content: center; }
+    #card-modal.hidden { display: none; }
+    #card-modal .code-box input { letter-spacing: 0.5px; text-align: left; font-size: 1rem; }
+    #card-modal .code-actions #card-cancel { background: #1f1f3a; color: #aaa; }
+    #card-modal .code-actions #card-save { background: #00d4aa; color: #0d0d1a; }
+    .add-card-option { color: #00d4aa; justify-content: center; border: 1px dashed #2a2a4e !important; }
+
+    /* --- DRAGGABLE BOTTOM SHEETS (chat + payment method) ---
+       Confined inside the app frame (not the browser viewport) so they stay
+       attached to the centered card on wide screens. Height is driven by
+       JS (drag-sheet.js pattern below) between --sheet-min/--sheet-max. */
+    #chat-modal, #payment-modal { position: absolute; left: 0; right: 0; bottom: 0; top: auto; width: auto; height: 55vh; max-height: 90vh; min-height: 0; border-radius: 22px 22px 0 0; z-index: 40; box-shadow: 0 -10px 30px rgba(0,0,0,0.5); display: flex; flex-direction: column; touch-action: none; }
+    #chat-modal.hidden, #payment-modal.hidden { display: none; }
+    .sheet-handle { width: 40px; height: 5px; background: #444; border-radius: 4px; margin: 10px auto 4px; cursor: grab; flex-shrink: 0; }
+    .sheet-handle:active { cursor: grabbing; }
+    #payment-modal { background: #15152a; }
+    #payment-modal .chat-header { padding: 4px 20px 12px; }
+    #payment-options { padding: 4px 20px 20px; overflow-y: auto; flex: 1; }
+    .payment-option { display: flex; align-items: center; gap: 10px; padding: 14px; border-radius: 12px; background: #1c1c36; border: 1px solid #2a2a4e; margin-bottom: 10px; cursor: pointer; font-weight: 600; }
+    .payment-option.selected { border-color: #00d4aa; background: rgba(0, 212, 170, 0.12); }
+    .remove-card-btn { margin-left: auto; background: transparent; border: none; color: #ff6b6b; font-size: 0.9rem; cursor: pointer; flex-shrink: 0; padding: 2px 4px; line-height: 1; }
 
     /* --- PROFILE MODAL --- */
     #profile-modal { position: absolute; top: 80px; right: 20px; width: 280px; background: #15152a; border-radius: 16px; padding: 20px; z-index: 30; display: none; border: 1px solid #2a2a4e; box-shadow: 0 8px 30px rgba(0,0,0,0.8); }
@@ -151,7 +228,9 @@
       <div class="map-top-bar">
         <button class="close-map" id="close-map-btn">✕</button>
         <span class="route-info" id="route-info-text">Select Pickup & Dropoff</span>
+        <button class="payment-pill" id="payment-pill-btn">💵 Cash</button>
       </div>
+      <div class="online-drivers-badge searching" id="online-drivers-badge">🔎 Looking for drivers...</div>
       <div class="ride-options-sheet">
         <div id="ride-options-list" style="color:#6b6b8d; text-align:center; margin-bottom:10px;">
           Tap the map to set locations
@@ -162,6 +241,86 @@
         <div class="tracking-panel hidden" id="tracking-panel">
           <div class="tracking-status" id="tracking-status">🔎 Looking for a nearby driver...</div>
           <div class="tracking-eta" id="tracking-eta"></div>
+          <div class="tracking-motion" id="tracking-motion"></div>
+          <div class="tracking-wait" id="tracking-wait"></div>
+          <div class="tracking-code" id="tracking-code"></div>
+          <div class="driver-info-card hidden" id="driver-info-card">
+            <div class="who">
+              <div class="name" id="driver-info-name">Driver</div>
+              <div class="vehicle" id="driver-info-vehicle"></div>
+            </div>
+            <button class="call-btn" id="open-call-btn">📞</button>
+            <button class="chat-btn" id="open-chat-btn">💬 Chat</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- CHAT SHEET (rider <-> driver, once a ride is accepted) — draggable up/down -->
+    <div id="chat-modal" class="hidden">
+      <div class="sheet-handle" id="chat-handle"></div>
+      <div class="chat-header">
+        <span id="chat-with-name">Chat</span>
+        <span id="close-chat">✕</span>
+      </div>
+      <div id="chat-messages"></div>
+      <div class="chat-input-area">
+        <input type="text" id="chat-input" placeholder="Type a message..." />
+        <button id="chat-send-btn">Send</button>
+      </div>
+    </div>
+
+    <!-- PAYMENT METHOD SHEET — draggable up/down -->
+    <div id="payment-modal" class="hidden">
+      <div class="sheet-handle" id="payment-handle"></div>
+      <div class="chat-header">
+        <span>💳 Payment method</span>
+        <span id="close-payment">✕</span>
+      </div>
+      <div id="payment-options">
+        <div class="payment-option" data-method="cash">💵 <span>Cash</span></div>
+        <div id="saved-card-options"></div>
+        <div class="payment-option add-card-option" id="add-card-option">➕ <span>Add card</span></div>
+      </div>
+    </div>
+
+    <!-- ADD CARD MODAL (rider enters card details — demo only, masked storage) -->
+    <div id="card-modal" class="hidden">
+      <div class="code-box">
+        <h3>Add a card</h3>
+        <p>Enter your card details. Demo only — nothing is charged, and only the last 4 digits are saved.</p>
+        <input type="text" id="card-holder-input" placeholder="Name on card" autocomplete="cc-name" />
+        <input type="text" id="card-number-input" placeholder="Card number" inputmode="numeric" maxlength="19" autocomplete="cc-number" />
+        <div style="display:flex; gap:10px;">
+          <input type="text" id="card-expiry-input" placeholder="MM/YY" inputmode="numeric" maxlength="5" autocomplete="cc-exp" style="flex:1;" />
+          <input type="password" id="card-cvv-input" placeholder="CVV" inputmode="numeric" maxlength="4" autocomplete="cc-csc" style="flex:1;" />
+        </div>
+        <div class="code-error" id="card-error"></div>
+        <div class="code-actions">
+          <button id="card-cancel">Cancel</button>
+          <button id="card-save">Save card</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- IN-APP CALL OVERLAY (ring / in-call, rider <-> driver) -->
+    <div id="call-overlay" class="hidden">
+      <div id="call-avatar">📞</div>
+      <div id="call-name">Calling...</div>
+      <div id="call-status">Ringing...</div>
+      <div id="call-actions"></div>
+    </div>
+
+    <!-- CONFIRMATION CODE MODAL (rider sets a 4-digit code when booking) -->
+    <div id="code-modal" class="hidden">
+      <div class="code-box">
+        <h3>Set your confirmation code</h3>
+        <p>Share this 4-digit code with your driver. They must enter it to start the ride — this stops a ride from starting without you on board.</p>
+        <input type="text" id="code-input" inputmode="numeric" maxlength="4" placeholder="••••" />
+        <div class="code-error" id="code-error"></div>
+        <div class="code-actions">
+          <button id="code-cancel">Cancel</button>
+          <button id="code-confirm">Request ride</button>
         </div>
       </div>
     </div>

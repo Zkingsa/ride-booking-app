@@ -41,12 +41,157 @@ document.addEventListener('DOMContentLoaded', () => {
   const trackingPanel = document.getElementById('tracking-panel');
   const trackingStatus = document.getElementById('tracking-status');
   const trackingEta = document.getElementById('tracking-eta');
+  const trackingMotion = document.getElementById('tracking-motion');
+  const trackingWait = document.getElementById('tracking-wait');
+  const trackingCode = document.getElementById('tracking-code');
+  const driverInfoCard = document.getElementById('driver-info-card');
+  const driverInfoName = document.getElementById('driver-info-name');
+  const driverInfoVehicle = document.getElementById('driver-info-vehicle');
+  const openChatBtn = document.getElementById('open-chat-btn');
+  const openCallBtn = document.getElementById('open-call-btn');
+
+  // --- CONFIRMATION CODE MODAL (rider sets a 4-digit code at booking) ---
+  const codeModal = document.getElementById('code-modal');
+  const codeInput = document.getElementById('code-input');
+  const codeError = document.getElementById('code-error');
+  const codeCancel = document.getElementById('code-cancel');
+  const codeConfirm = document.getElementById('code-confirm');
+
+  // --- CHAT DOM ELEMENTS ---
+  const chatModal = document.getElementById('chat-modal');
+  const chatHandle = document.getElementById('chat-handle');
+  const chatWithName = document.getElementById('chat-with-name');
+  const chatMessages = document.getElementById('chat-messages');
+  const chatInput = document.getElementById('chat-input');
+  const chatSendBtn = document.getElementById('chat-send-btn');
+  const closeChat = document.getElementById('close-chat');
+  let currentDriverId = null;
+  let currentDriverName = 'Driver';
+
+  // --- PAYMENT METHOD DOM ELEMENTS ---
+  const paymentModal = document.getElementById('payment-modal');
+  const paymentHandle = document.getElementById('payment-handle');
+  const paymentPillBtn = document.getElementById('payment-pill-btn');
+  const paymentOptionsEl = document.getElementById('payment-options');
+  const closePayment = document.getElementById('close-payment');
+  const PAYMENT_LABELS = { cash: '💵 Cash', card: '💳 Card' };
+  // Saved cards keep only masked display details (brand, last 4, expiry, name)
+  // — never the full number or CVV. The pill reflects the last chosen method.
+  let savedCards = [];
+  try { savedCards = JSON.parse(localStorage.getItem('savedCards') || '[]'); } catch { savedCards = []; }
+  let selectedPaymentMethod = (localStorage.getItem('paymentMethod') === 'card' && savedCards.length) ? 'card' : 'cash';
+
+  function persistCards() { localStorage.setItem('savedCards', JSON.stringify(savedCards)); }
+  function cardShort(c) { return `${c.brand} •••• ${c.last4}`; }
+  function paymentPillLabel() {
+    return (selectedPaymentMethod === 'card' && savedCards.length) ? `💳 ${cardShort(savedCards[0])}` : PAYMENT_LABELS.cash;
+  }
+  paymentPillBtn.textContent = paymentPillLabel();
+
+  // --- DRAGGABLE BOTTOM SHEET (used by chat + payment method) ---
+  // Height-driven, not transform-driven, so it plays nicely with the sheet's
+  // own internal scrolling (chat history / payment list). Drag the handle up
+  // or down between minVH/maxVH; dragging below ~60% of minVH closes it.
+  function makeDragSheet(sheetEl, handleEl, { minVH = 32, maxVH = 88, startVH = 55 } = {}) {
+    const appEl = sheetEl.parentElement;
+    let dragging = false, startY = 0, startHeightPx = 0;
+
+    function vhToPx(vh) { return (appEl.clientHeight * vh) / 100; }
+
+    function open() {
+      sheetEl.classList.remove('hidden');
+      sheetEl.style.transition = 'none';
+      sheetEl.style.height = `${vhToPx(startVH)}px`;
+      // Force layout so the next height change (if any) can transition smoothly.
+      void sheetEl.offsetHeight;
+      sheetEl.style.transition = '';
+    }
+    function close() {
+      sheetEl.style.transition = 'height 0.2s ease';
+      sheetEl.style.height = '0px';
+      setTimeout(() => sheetEl.classList.add('hidden'), 200);
+    }
+    function snapTo(vh) {
+      sheetEl.style.transition = 'height 0.2s ease';
+      sheetEl.style.height = `${vhToPx(vh)}px`;
+    }
+
+    function onPointerDown(e) {
+      dragging = true;
+      startY = e.clientY;
+      startHeightPx = sheetEl.getBoundingClientRect().height;
+      sheetEl.style.transition = 'none';
+      handleEl.setPointerCapture(e.pointerId);
+    }
+    function onPointerMove(e) {
+      if (!dragging) return;
+      const delta = startY - e.clientY; // dragging up = positive
+      const newHeight = Math.min(vhToPx(maxVH), Math.max(0, startHeightPx + delta));
+      sheetEl.style.height = `${newHeight}px`;
+    }
+    function onPointerUp() {
+      if (!dragging) return;
+      dragging = false;
+      const heightPx = sheetEl.getBoundingClientRect().height;
+      const minPx = vhToPx(minVH);
+      if (heightPx < minPx * 0.6) { close(); return; }
+      const midPx = vhToPx((minVH + maxVH) / 2);
+      const maxPx = vhToPx(maxVH);
+      // Snap to whichever of the three stops is closest to where it was dropped.
+      const stops = [minPx, midPx, maxPx];
+      const nearest = stops.reduce((a, b) => Math.abs(b - heightPx) < Math.abs(a - heightPx) ? b : a);
+      sheetEl.style.transition = 'height 0.2s ease';
+      sheetEl.style.height = `${nearest}px`;
+    }
+
+    handleEl.addEventListener('pointerdown', onPointerDown);
+    handleEl.addEventListener('pointermove', onPointerMove);
+    handleEl.addEventListener('pointerup', onPointerUp);
+    handleEl.addEventListener('pointercancel', onPointerUp);
+
+    return { open, close };
+  }
+
+  const chatSheet = makeDragSheet(chatModal, chatHandle, { minVH: 32, maxVH: 88, startVH: 55 });
+  const paymentSheet = makeDragSheet(paymentModal, paymentHandle, { minVH: 30, maxVH: 70, startVH: 42 });
 
   // --- LIVE TRACKING STATE ---
   let currentRideId = null;
   let trackingActive = false;
   let driverArrivedAtPickup = false;
   let driverLiveMarker = null;
+  let currentRideCode = '';     // the 4-digit code this rider set at booking
+  let currentArrivedAt = null;  // when the driver clicked "Arrived at pickup"
+  let waitingTimerInterval = null; // rider-side live waiting-fee countdown
+
+  // Waiting-fee mirror of the server's model: 2 min free, then R0.20 / 20s.
+  const FREE_WAIT_MS = 2 * 60 * 1000;
+  const WAIT_FEE_PERIOD_MS = 20 * 1000;
+  const WAIT_FEE_PER_PERIOD = 0.20;
+
+  function clearWaitingTimer() {
+    if (waitingTimerInterval) { clearInterval(waitingTimerInterval); waitingTimerInterval = null; }
+    if (trackingWait) trackingWait.textContent = '';
+  }
+
+  // Live countdown: "free for Xs" until 2 minutes are up, then the fee grows.
+  function startWaitingTimer() {
+    clearWaitingTimer();
+    if (!currentArrivedAt) return;
+    waitingTimerInterval = setInterval(() => {
+      if (!trackingWait) return;
+      const elapsed = Date.now() - new Date(currentArrivedAt).getTime();
+      if (elapsed < FREE_WAIT_MS) {
+        const left = Math.ceil((FREE_WAIT_MS - elapsed) / 1000);
+        trackingWait.textContent = `⏱ Driver waiting — free for ${left}s`;
+      } else {
+        const chargedMs = elapsed - FREE_WAIT_MS;
+        const periods = Math.floor(chargedMs / WAIT_FEE_PERIOD_MS);
+        const fee = (periods * WAIT_FEE_PER_PERIOD).toFixed(2);
+        trackingWait.textContent = `💰 Waiting fee accruing: +R${fee} (R0.20 / 20s)`;
+      }
+    }, 1000);
+  }
 
   const driverCarIcon = L.divIcon({
     className: 'driver-car-icon',
@@ -124,10 +269,12 @@ document.addEventListener('DOMContentLoaded', () => {
     { id: 'bike', name: 'Bike', icon: '🏍️', seats: 1, priceMult: 0.55, etaMult: 0.75, sub: 'Fastest through traffic' },
     { id: 'mini', name: 'Mini', icon: '🚙', seats: 2, priceMult: 0.8, etaMult: 0.95, sub: 'Compact, budget car' },
     { id: 'standard', name: 'Standard', icon: '🚗', seats: 4, priceMult: 1, etaMult: 1, sub: 'Everyday rides' },
+    { id: 'xl', name: 'XL', icon: '🚐', seats: 8, priceMult: 1.6, etaMult: 1.15, sub: 'Mini bus — bigger groups' },
     { id: 'saver', name: 'Saver', icon: '💸', seats: 4, priceMult: 0.7, etaMult: 1.7, sub: 'Cheapest — matched with a driver finishing a nearby trip' }
   ];
   let selectedRideType = 'standard';
   let currentRideCost = 0;
+  let currentBasePrice = 0; // last-computed base fare (before tier multiplier) for the current pickup/dropoff
 
   const greenIcon = L.icon({
     iconUrl: 'https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-green.png',
@@ -148,6 +295,12 @@ document.addEventListener('DOMContentLoaded', () => {
   function setPickup(latlng) {
     if (pickupMarker) window.riderMap.removeLayer(pickupMarker);
     pickupMarker = L.marker(latlng, { icon: greenIcon }).addTo(window.riderMap).bindPopup('Pickup').openPopup();
+
+    // A pin-drop pick (📌 button) is only meant to set THIS field's address —
+    // never trigger a fare/route calc, even if the other pin already exists
+    // (finishPinPick() closes back to Home right after this either way).
+    if (pinPickField) { clickState = dropoffMarker ? 'done' : 'dropoff'; return; }
+
     if (dropoffMarker) {
       clickState = 'done';
       updateRouteAndOptions();
@@ -161,6 +314,8 @@ document.addEventListener('DOMContentLoaded', () => {
   function setDropoff(latlng) {
     if (dropoffMarker) window.riderMap.removeLayer(dropoffMarker);
     dropoffMarker = L.marker(latlng, { icon: redIcon }).addTo(window.riderMap).bindPopup('Dropoff').openPopup();
+
+    if (pinPickField) { clickState = pickupMarker ? 'done' : 'pickup'; return; }
 
     if (!pickupMarker) {
       // Dropoff was picked (e.g. via the 📌 button) before pickup exists —
@@ -203,11 +358,13 @@ document.addEventListener('DOMContentLoaded', () => {
   }
 
   // Renders all ride tiers (Bike/Mini/Standard/Saver) for the given distance,
-  // keeping whichever tier is currently selected highlighted, and wires up
-  // tap-to-select on each card.
+  // keeping whichever tier is currently selected highlighted. Each row has
+  // its own Request button so a ride can be booked directly from that row,
+  // without needing to select-then-scroll-to-the-bottom-button.
   function renderRideOptions(dist) {
     const baseTimeEst = Math.max(1, Math.round(dist * 2));
     const basePrice = 15 + (dist * 8);
+    currentBasePrice = basePrice;
 
     rideOptionsList.innerHTML = RIDE_TYPES.map(rt => {
       const price = Math.max(5, basePrice * rt.priceMult);
@@ -219,7 +376,10 @@ document.addEventListener('DOMContentLoaded', () => {
         <div class="ride-option${isSelected ? ' selected' : ''}" data-ride-type="${rt.id}">
           <div class="car-icon">${rt.icon}</div>
           <div class="details"><div class="name">${rt.name}</div><div class="${subClass}">${eta} min · ${seatLabel} · ${rt.sub}</div></div>
-          <div class="price">R${price.toFixed(0)}</div>
+          <div class="right-col">
+            <div class="price">R${price.toFixed(0)}</div>
+            <button type="button" class="request-row-btn" data-ride-type="${rt.id}">Request</button>
+          </div>
         </div>
       `;
     }).join('');
@@ -227,7 +387,16 @@ document.addEventListener('DOMContentLoaded', () => {
     rideOptionsList.querySelectorAll('.ride-option').forEach(el => {
       el.addEventListener('click', () => {
         selectedRideType = el.dataset.rideType;
-        renderRideOptions(dist); // re-render to move the highlight + refresh the button
+        renderRideOptions(dist); // re-render to move the highlight + refresh the bottom button
+      });
+    });
+
+    // Request buttons book that specific tier immediately, regardless of
+    // which row is currently "selected" for highlighting purposes.
+    rideOptionsList.querySelectorAll('.request-row-btn').forEach(btn => {
+      btn.addEventListener('click', (e) => {
+        e.stopPropagation(); // don't also trigger the row's select handler
+        requestRide(btn.dataset.rideType);
       });
     });
 
@@ -239,6 +408,36 @@ document.addEventListener('DOMContentLoaded', () => {
     currentRideCost = Math.max(5, basePrice * rt.priceMult);
     confirmBtn.textContent = `${rt.icon} Request ${rt.name} (R${currentRideCost.toFixed(0)})`;
   }
+
+  // --- ONLINE DRIVERS (shown on the map + a live "looking for drivers"
+  // indicator, refreshed continuously so the rider can always see who's
+  // actually around, not just a one-time snapshot). ---
+  const onlineDriversBadge = document.getElementById('online-drivers-badge');
+  const onlineDriverIcon = L.divIcon({ className: 'driver-car-icon', html: '🚗', iconSize: [26, 26], iconAnchor: [13, 13] });
+  let onlineDriverMarkers = null; // Leaflet layer group, created once the map exists
+  const ONLINE_DRIVERS_POLL_MS = 5000;
+
+  async function refreshOnlineDrivers() {
+    if (!window.riderMap) return;
+    if (!onlineDriverMarkers) { onlineDriverMarkers = L.layerGroup().addTo(window.riderMap); }
+    try {
+      const res = await fetch('/api/drivers/online');
+      const drivers = await res.json();
+      onlineDriverMarkers.clearLayers();
+      drivers.forEach(d => {
+        L.marker([d.lat, d.lng], { icon: onlineDriverIcon, opacity: d.busy ? 0.55 : 1 }).addTo(onlineDriverMarkers);
+      });
+      if (drivers.length > 0) {
+        onlineDriversBadge.textContent = `🟢 ${drivers.length} driver${drivers.length === 1 ? '' : 's'} online nearby`;
+        onlineDriversBadge.classList.remove('searching');
+      } else {
+        onlineDriversBadge.textContent = '🔎 Looking for drivers...';
+        onlineDriversBadge.classList.add('searching');
+      }
+    } catch (err) { console.error('Error fetching online drivers:', err); }
+  }
+  refreshOnlineDrivers();
+  setInterval(refreshOnlineDrivers, ONLINE_DRIVERS_POLL_MS);
 
   function initRiderMap() {
     if (window.riderMap) {
@@ -326,10 +525,21 @@ document.addEventListener('DOMContentLoaded', () => {
     pinPickField = null;
     mapScreen.classList.add('open');
     if (window.riderMap) window.riderMap.invalidateSize();
+
+    // A pin-drop pick deliberately doesn't show ride options right away (see
+    // setPickup/setDropoff). But pressing "Find Rides" is an explicit request
+    // to see them — if both locations are already known (however they were
+    // set: typed, searched, or pinned), show the full ride list/price/route
+    // immediately, exactly as if both had just been typed in.
+    if (pickupMarker && dropoffMarker) {
+      updateRouteAndOptions();
+    }
   });
   closeMapBtn.addEventListener('click', () => {
     pinPickField = null; // cancel any in-progress single-pin pick
-    // While tracking, closing the map just hides the view — the ride/socket listeners keep running
+    // During a trip the tracking panel + driver chat/call live on the map
+    // screen, so it can't be closed — the rider must be able to see them.
+    if (trackingActive) return;
     mapScreen.classList.remove('open');
   });
 
@@ -347,19 +557,22 @@ document.addEventListener('DOMContentLoaded', () => {
   pickupPinBtn.addEventListener('click', () => openPinPicker('pickup'));
   dropoffPinBtn.addEventListener('click', () => openPinPicker('dropoff'));
 
-  // After a single pin-drop pick: if that completed the pair (both pins now
-  // set), stay on the map showing the ride sheet — the flow is effectively
-  // done. Otherwise it was just filling one field, so hop back to Home.
+  // A pin-drop pick (via the 📌 buttons) is for editing ONE field only — it
+  // should never jump into the ride-options/request view, even if the other
+  // field already happened to be set. Always hop back to Home after the tap.
   function finishPinPick() {
-    const bothSet = pickupMarker && dropoffMarker;
     pinPickField = null;
-    if (!bothSet) {
-      setTimeout(() => { mapScreen.classList.remove('open'); }, 450);
-    }
+    setTimeout(() => { mapScreen.classList.remove('open'); }, 450);
   }
 
   // --- REQUEST RIDE ---
-  confirmBtn.addEventListener('click', async () => {
+  // Shared by the bottom "Request" button (uses whichever tier is selected)
+  // and each ride option row's own Request button (books that row directly).
+  // The rider must set a 4-digit confirmation code, which the driver will
+  // have to enter to START the ride (anti-fraud for card payment).
+  let pendingRideData = null;
+
+  async function requestRide(rideTypeId) {
     if (!pickupMarker || !dropoffMarker) {
       alert('Please set both Pickup and Dropoff on the map first.');
       return;
@@ -367,35 +580,82 @@ document.addEventListener('DOMContentLoaded', () => {
 
     const p = pickupMarker.getLatLng();
     const d = dropoffMarker.getLatLng();
-    const rt = RIDE_TYPES.find(r => r.id === selectedRideType) || RIDE_TYPES[2];
+    const rt = RIDE_TYPES.find(r => r.id === rideTypeId) || RIDE_TYPES[2];
+    const cost = Math.max(5, currentBasePrice * rt.priceMult);
 
-    const rideData = {
+    pendingRideData = {
       pickup: { lat: p.lat, lng: p.lng },
       dropoff: { lat: d.lat, lng: d.lng },
+      pickupAddress: pickupSearch.value.trim() || 'Pickup',
+      dropoffAddress: dropoffSearch.value.trim() || 'Dropoff',
       riderId: userId,
-      cost: currentRideCost.toFixed(2),
+      cost: cost.toFixed(2),
       rideType: rt.id,
-      seats: rt.seats
+      seats: rt.seats,
+      paymentMethod: selectedPaymentMethod
     };
-    try {
-      const res = await fetch('/api/rides', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(rideData)
-      });
-      const ride = await res.json();
-      startTracking(ride);
-    } catch (err) {
-      console.error('Error requesting ride:', err);
-      alert('Failed to request ride.');
-    }
+    openCodeModal();
+  }
+
+  // --- CONFIRMATION CODE MODAL ---
+  function openCodeModal() {
+    codeError.textContent = '';
+    codeInput.value = '';
+    codeModal.classList.remove('hidden');
+    codeInput.focus();
+  }
+  function closeCodeModal() {
+    codeModal.classList.add('hidden');
+  }
+  codeCancel.addEventListener('click', () => {
+    pendingRideData = null;
+    closeCodeModal();
   });
+  codeConfirm.addEventListener('click', () => {
+    const code = codeInput.value.trim();
+    if (!/^\d{4}$/.test(code)) {
+      codeError.textContent = 'Please enter a 4-digit code.';
+      return;
+    }
+    const rideData = { ...pendingRideData, confirmationCode: code };
+    pendingRideData = null;
+    closeCodeModal();
+    (async () => {
+      try {
+        const res = await fetch('/api/rides', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(rideData)
+        });
+        if (!res.ok) {
+          const err = await res.json().catch(() => ({}));
+          alert(err.error || 'Failed to request ride.');
+          return;
+        }
+        const ride = await res.json();
+        startTracking(ride);
+      } catch (err) {
+        console.error('Error requesting ride:', err);
+        alert('Failed to request ride.');
+      }
+    })();
+  });
+  codeInput.addEventListener('keydown', (e) => { if (e.key === 'Enter') codeConfirm.click(); });
+
+  confirmBtn.addEventListener('click', () => requestRide(selectedRideType));
 
   // --- LIVE DRIVER TRACKING ---
   function startTracking(ride) {
     currentRideId = ride._id;
     trackingActive = true;
     driverArrivedAtPickup = false;
+    currentRideCode = ride.confirmationCode || '';
+    currentArrivedAt = null;
+
+    // The driver status / chat / call live in the map screen's sheet, so the
+    // map must stay open for the whole trip or the rider won't see them.
+    mapScreen.classList.add('open');
+    if (window.riderMap) window.riderMap.invalidateSize();
 
     rideOptionsList.style.display = 'none';
     confirmBtn.style.display = 'none';
@@ -404,7 +664,11 @@ document.addEventListener('DOMContentLoaded', () => {
       ? '💸 Saver selected — matching you with a driver finishing a nearby trip...'
       : '🔎 Looking for a nearby driver...';
     trackingEta.textContent = '';
-    routeInfoText.textContent = `${pickupSearch.value || 'Pickup'} → ${dropoffSearch.value || 'Dropoff'}`;
+    trackingMotion.textContent = '';
+    trackingWait.textContent = '';
+    trackingCode.textContent = currentRideCode ? `🔑 Your confirmation code: ${currentRideCode}` : '';
+    clearWaitingTimer();
+    routeInfoText.textContent = `${ride.pickupAddress || pickupSearch.value || 'Pickup'} → ${ride.dropoffAddress || dropoffSearch.value || 'Dropoff'}`;
     // routeLine (pickup → dropoff) from setDropoff() stays on the map through the whole trip.
   }
 
@@ -412,22 +676,45 @@ document.addEventListener('DOMContentLoaded', () => {
     trackingActive = false;
     currentRideId = null;
     driverArrivedAtPickup = false;
+    currentRideCode = '';
+    currentArrivedAt = null;
+    clearWaitingTimer();
     if (driverLiveMarker && window.riderMap) { window.riderMap.removeLayer(driverLiveMarker); driverLiveMarker = null; }
     trackingPanel.classList.add('hidden');
     rideOptionsList.style.display = 'block';
     confirmBtn.style.display = 'block';
+    driverInfoCard.classList.add('hidden');
+    chatSheet.close();
+    chatMessages.innerHTML = '';
+    hideCallOverlay();
+    currentDriverId = null;
+    currentDriverName = 'Driver';
     resetMarkers();
   }
 
-  // Ride status changes (accepted / completed) pushed from the server
+  // Ride status changes (accepted / arrived / started / completed) pushed from the server
   socket.on('ride-updated', (ride) => {
     if (!trackingActive || ride._id !== currentRideId) return;
 
     if (ride.status === 'accepted') {
       trackingStatus.textContent = '🚗 Your driver is on the way to pick you up';
+      trackingMotion.textContent = '';
+      showDriverInfo(ride);
+    } else if (ride.status === 'arrived') {
+      currentArrivedAt = ride.arrivedAt;
+      driverArrivedAtPickup = true;
+      trackingStatus.textContent = '📍 Your driver has arrived at pickup';
+      trackingMotion.textContent = '⏸️ Driver is stationary';
+      startWaitingTimer();
+    } else if (ride.status === 'in_progress') {
+      currentArrivedAt = null;
+      clearWaitingTimer();
+      trackingStatus.textContent = '🚗 Ride started — heading to your destination';
+      trackingWait.textContent = ride.waitingFee > 0 ? `💰 Waiting fee: +R${ride.waitingFee.toFixed(2)}` : '';
     } else if (ride.status === 'completed') {
       trackingStatus.textContent = '✅ Trip completed — thanks for riding!';
       trackingEta.textContent = '';
+      clearWaitingTimer();
       setTimeout(() => {
         endTracking();
         mapScreen.classList.remove('open');
@@ -436,10 +723,44 @@ document.addEventListener('DOMContentLoaded', () => {
     }
   });
 
+  // Fetches the driver's name and shows them + their car type + a Chat button
+  // once the ride's been accepted. Also joins the socket room used for chat.
+  async function showDriverInfo(ride) {
+    currentDriverId = ride.driverId;
+    const rt = RIDE_TYPES.find(r => r.id === ride.rideType) || RIDE_TYPES[2];
+    driverInfoVehicle.textContent = `${rt.icon} ${rt.name} · ${rt.seats === 1 ? '1 seat' : rt.seats + ' seats'}`;
+    driverInfoName.textContent = 'Driver';
+    driverInfoCard.classList.remove('hidden');
+
+    if (currentDriverId) {
+      try {
+        const res = await fetch(`/api/auth/user/${currentDriverId}`);
+        if (res.ok) {
+          const info = await res.json();
+          currentDriverName = info.name || 'Driver';
+          driverInfoName.textContent = currentDriverName;
+          // Real registered vehicle (make, color, plate) is more useful for
+          // spotting the car than just the ride tier icon, when we have it.
+          if (info.vehicle) {
+            const v = info.vehicle;
+            driverInfoVehicle.textContent = `${v.color || ''} ${v.make || ''} · ${v.registration || ''}`.replace(/\s+/g, ' ').trim();
+          }
+        }
+      } catch { /* keep the "Driver" fallback label */ }
+    }
+
+    socket.emit('join-ride-room', currentRideId);
+  }
+
   // Live driver GPS position, broadcast every ~100ms while a trip is active.
   // This is what draws "where the car is" and drives the live ETA countdown.
   socket.on('driver-location', (data) => {
     if (!trackingActive || data.rideId !== currentRideId || !window.riderMap) return;
+
+    // Moving/stationary detection (computed driver-side from position deltas).
+    trackingMotion.textContent = data.moving === false
+      ? '⏸️ Driver is stationary'
+      : '🟢 Driver is moving';
 
     const latlng = L.latLng(data.lat, data.lng);
     if (!driverLiveMarker) {
@@ -477,6 +798,256 @@ document.addEventListener('DOMContentLoaded', () => {
     trackingEta.textContent = '';
   });
 
+  // --- CHAT (rider <-> driver, available once the ride is accepted) ---
+  function renderChatMessage(msg) {
+    const div = document.createElement('div');
+    div.className = msg.senderId === userId ? 'me' : 'them';
+    div.textContent = msg.message;
+    chatMessages.appendChild(div);
+    chatMessages.scrollTop = chatMessages.scrollHeight;
+  }
+
+  openChatBtn.addEventListener('click', async () => {
+    chatWithName.textContent = `💬 ${currentDriverName}`;
+    chatMessages.innerHTML = '';
+    chatSheet.open();
+    if (!currentRideId) return;
+    try {
+      const res = await fetch(`/api/messages/${currentRideId}`);
+      const history = await res.json();
+      history.forEach(renderChatMessage);
+    } catch (err) { console.error('Error loading chat history:', err); }
+  });
+  closeChat.addEventListener('click', () => chatSheet.close());
+
+  function sendChatMessage() {
+    const text = chatInput.value.trim();
+    if (!text || !currentRideId) return;
+    socket.emit('send-message', {
+      rideId: currentRideId,
+      senderId: userId,
+      senderName: userName || 'Rider',
+      message: text
+    });
+    chatInput.value = '';
+  }
+  chatSendBtn.addEventListener('click', sendChatMessage);
+  chatInput.addEventListener('keydown', (e) => { if (e.key === 'Enter') sendChatMessage(); });
+
+  socket.on('new-message', (msg) => {
+    if (!trackingActive || String(msg.rideId) !== String(currentRideId)) return;
+    renderChatMessage(msg);
+  });
+
+  // --- IN-APP CALL (signaling only — rings, accepts/declines, tracks call
+  // duration; there's no real audio pipeline here, same "simulated but
+  // honest" approach this app already uses for driver movement/ETA). ---
+  const callOverlay = document.getElementById('call-overlay');
+  const callAvatar = document.getElementById('call-avatar');
+  const callNameEl = document.getElementById('call-name');
+  const callStatusEl = document.getElementById('call-status');
+  const callActionsEl = document.getElementById('call-actions');
+  let callTimerInterval = null;
+
+  function callActionBtn(cls, icon, onClick) {
+    const btn = document.createElement('button');
+    btn.className = `call-action-btn ${cls}`;
+    btn.textContent = icon;
+    btn.addEventListener('click', onClick);
+    return btn;
+  }
+
+  function showOutgoingCall(name) {
+    callAvatar.textContent = '📞';
+    callNameEl.textContent = name;
+    callStatusEl.textContent = 'Ringing...';
+    callActionsEl.innerHTML = '';
+    callActionsEl.appendChild(callActionBtn('end', '✕', endCall));
+    callOverlay.classList.remove('hidden');
+  }
+  function showIncomingCall(name) {
+    callAvatar.textContent = '📞';
+    callNameEl.textContent = name;
+    callStatusEl.textContent = 'Incoming call...';
+    callActionsEl.innerHTML = '';
+    callActionsEl.appendChild(callActionBtn('decline', '✕', declineCall));
+    callActionsEl.appendChild(callActionBtn('accept', '📞', acceptCall));
+    callOverlay.classList.remove('hidden');
+  }
+  function showActiveCall() {
+    callStatusEl.textContent = '00:00';
+    callActionsEl.innerHTML = '';
+    callActionsEl.appendChild(callActionBtn('end', '✕', endCall));
+    let seconds = 0;
+    clearInterval(callTimerInterval);
+    callTimerInterval = setInterval(() => {
+      seconds++;
+      const m = String(Math.floor(seconds / 60)).padStart(2, '0');
+      const s = String(seconds % 60).padStart(2, '0');
+      callStatusEl.textContent = `${m}:${s}`;
+    }, 1000);
+  }
+  function hideCallOverlay() {
+    clearInterval(callTimerInterval);
+    callTimerInterval = null;
+    callOverlay.classList.add('hidden');
+  }
+
+  function startCall() {
+    if (!currentRideId) return;
+    socket.emit('call-request', { rideId: currentRideId, callerName: userName || 'Rider' });
+    showOutgoingCall(currentDriverName);
+  }
+  function acceptCall() {
+    socket.emit('call-accept', { rideId: currentRideId });
+    showActiveCall();
+  }
+  function declineCall() {
+    socket.emit('call-decline', { rideId: currentRideId });
+    hideCallOverlay();
+  }
+  function endCall() {
+    socket.emit('call-end', { rideId: currentRideId });
+    hideCallOverlay();
+  }
+
+  openCallBtn.addEventListener('click', startCall);
+
+  socket.on('incoming-call', (data) => {
+    if (!trackingActive || String(data.rideId) !== String(currentRideId)) return;
+    showIncomingCall(data.callerName || 'Driver');
+  });
+  socket.on('call-accepted', (data) => {
+    if (!trackingActive || String(data.rideId) !== String(currentRideId)) return;
+    showActiveCall();
+  });
+  socket.on('call-declined', (data) => {
+    if (!trackingActive || String(data.rideId) !== String(currentRideId)) return;
+    callStatusEl.textContent = 'Call declined';
+    setTimeout(hideCallOverlay, 1200);
+  });
+  socket.on('call-ended', (data) => {
+    if (!trackingActive || String(data.rideId) !== String(currentRideId)) return;
+    hideCallOverlay();
+  });
+
+  // --- PAYMENT METHOD (Cash + saved cards, with an "Add card" flow) ---
+  function renderPaymentOptions() {
+    paymentOptionsEl.querySelectorAll('.payment-option').forEach(el => el.classList.remove('selected'));
+    const cashEl = paymentOptionsEl.querySelector('.payment-option[data-method="cash"]');
+    if (cashEl && selectedPaymentMethod === 'cash') cashEl.classList.add('selected');
+
+    const cardContainer = document.getElementById('saved-card-options');
+    cardContainer.innerHTML = '';
+    savedCards.forEach((c, i) => {
+      const div = document.createElement('div');
+      div.className = 'payment-option card-option' + (selectedPaymentMethod === 'card' && i === 0 ? ' selected' : '');
+      div.innerHTML = `💳 <span style="flex:1;">${cardShort(c)}</span><button type="button" class="remove-card-btn" title="Remove card">✕</button>`;
+      div.addEventListener('click', () => {
+        selectedPaymentMethod = 'card';
+        localStorage.setItem('paymentMethod', 'card');
+        paymentPillBtn.textContent = paymentPillLabel();
+        renderPaymentOptions();
+        paymentSheet.close();
+      });
+      // Remove this card; if it was the selected method (and the last card),
+      // fall back to cash so there's always a valid payment method.
+      div.querySelector('.remove-card-btn').addEventListener('click', (e) => {
+        e.stopPropagation();
+        savedCards = savedCards.filter(x => x.id !== c.id);
+        persistCards();
+        if (!savedCards.length) {
+          selectedPaymentMethod = 'cash';
+          localStorage.setItem('paymentMethod', 'cash');
+        }
+        paymentPillBtn.textContent = paymentPillLabel();
+        renderPaymentOptions();
+      });
+      cardContainer.appendChild(div);
+    });
+  }
+
+  paymentPillBtn.addEventListener('click', () => {
+    renderPaymentOptions();
+    paymentSheet.open();
+  });
+  closePayment.addEventListener('click', () => paymentSheet.close());
+  paymentOptionsEl.querySelectorAll('.payment-option[data-method="cash"]').forEach(el => {
+    el.addEventListener('click', () => {
+      selectedPaymentMethod = 'cash';
+      localStorage.setItem('paymentMethod', 'cash');
+      paymentPillBtn.textContent = PAYMENT_LABELS.cash;
+      renderPaymentOptions();
+      paymentSheet.close();
+    });
+  });
+
+  // --- ADD CARD MODAL ---
+  const cardModal = document.getElementById('card-modal');
+  const cardHolderInput = document.getElementById('card-holder-input');
+  const cardNumberInput = document.getElementById('card-number-input');
+  const cardExpiryInput = document.getElementById('card-expiry-input');
+  const cardCvvInput = document.getElementById('card-cvv-input');
+  const cardError = document.getElementById('card-error');
+  const cardCancel = document.getElementById('card-cancel');
+  const cardSave = document.getElementById('card-save');
+
+  document.getElementById('add-card-option').addEventListener('click', () => {
+    paymentSheet.close();
+    cardError.textContent = '';
+    cardModal.classList.remove('hidden');
+    cardHolderInput.focus();
+  });
+  cardCancel.addEventListener('click', () => cardModal.classList.add('hidden'));
+
+  function detectCardBrand(num) {
+    const n = num.replace(/\D/g, '');
+    if (/^4/.test(n)) return 'Visa';
+    if (/^5[1-5]/.test(n)) return 'Mastercard';
+    if (/^3[47]/.test(n)) return 'Amex';
+    if (/^6(011|5)/.test(n)) return 'Discover';
+    return 'Card';
+  }
+
+  // Auto-format while typing: spaces every 4 digits + MM/YY expiry.
+  cardNumberInput.addEventListener('input', () => {
+    const digits = cardNumberInput.value.replace(/\D/g, '').slice(0, 16);
+    cardNumberInput.value = digits.replace(/(.{4})/g, '$1 ').trim();
+  });
+  cardExpiryInput.addEventListener('input', () => {
+    let v = cardExpiryInput.value.replace(/\D/g, '').slice(0, 4);
+    if (v.length >= 3) v = v.slice(0, 2) + '/' + v.slice(2);
+    cardExpiryInput.value = v;
+  });
+
+  cardSave.addEventListener('click', () => {
+    const holder = cardHolderInput.value.trim();
+    const num = cardNumberInput.value.replace(/\D/g, '');
+    const exp = cardExpiryInput.value.trim();
+    const cvv = cardCvvInput.value.trim();
+
+    if (!holder) { cardError.textContent = 'Enter the name on the card.'; return; }
+    if (!/^\d{13,16}$/.test(num)) { cardError.textContent = 'Enter a valid card number (13-16 digits).'; return; }
+    if (!/^(0[1-9]|1[0-2])\/\d{2}$/.test(exp)) { cardError.textContent = 'Enter expiry as MM/YY.'; return; }
+    if (!/^\d{3,4}$/.test(cvv)) { cardError.textContent = 'Enter a valid CVV.'; return; }
+
+    // Store only masked details — never the full number or CVV.
+    const card = {
+      id: Date.now(),
+      brand: detectCardBrand(num),
+      last4: num.slice(-4),
+      exp,
+      holder
+    };
+    savedCards.unshift(card);
+    persistCards();
+    selectedPaymentMethod = 'card';
+    localStorage.setItem('paymentMethod', 'card');
+    paymentPillBtn.textContent = `💳 ${cardShort(card)}`;
+    cardModal.classList.add('hidden');
+    renderPaymentOptions();
+  });
+
   function resetMarkers() {
     if (pickupMarker && window.riderMap) window.riderMap.removeLayer(pickupMarker);
     if (dropoffMarker && window.riderMap) window.riderMap.removeLayer(dropoffMarker);
@@ -503,11 +1074,13 @@ document.addEventListener('DOMContentLoaded', () => {
       rides.forEach(ride => {
         const date = new Date(ride.createdAt).toLocaleString();
         const rt = RIDE_TYPES.find(r => r.id === ride.rideType) || RIDE_TYPES[2];
+        const from = ride.pickupAddress || `${ride.pickup.lat.toFixed(4)}, ${ride.pickup.lng.toFixed(4)}`;
+        const to = ride.dropoffAddress || `${ride.dropoff.lat.toFixed(4)}, ${ride.dropoff.lng.toFixed(4)}`;
         container.innerHTML += `
           <div class="ride-history-item">
             <div class="h-info">
-              <div class="addr">${rt.icon} ${rt.name} · From: ${ride.pickup.lat.toFixed(4)}</div>
-              <div class="addr">To: ${ride.dropoff.lat.toFixed(4)}</div>
+              <div class="addr">${rt.icon} ${rt.name} · From: ${from}</div>
+              <div class="addr">To: ${to}</div>
               <div style="color:#6b6b8d; font-size:0.8rem;">${date}</div>
             </div>
             <div class="h-price">R${ride.cost || '0'}</div>

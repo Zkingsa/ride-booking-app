@@ -9,6 +9,10 @@
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap" rel="stylesheet">
   <style>
     /* OVERRIDE specific Driver Styles */
+    /* Hide scrollbars everywhere (Firefox + WebKit/Blink) while keeping the
+       content scrollable — cleaner "app" look on any orientation. */
+    * { scrollbar-width: none; -ms-overflow-style: none; }
+    *::-webkit-scrollbar { display: none; }
     body { margin: 0; background: #0d0d1a; color: #fff; font-family: 'Inter', sans-serif; overflow: hidden; }
     #driver-app { height: 100vh; width: 100vw; position: relative; overflow: hidden; }
 
@@ -27,22 +31,70 @@
     #driver-map { height: 100vh; width: 100vw; z-index: 0; }
 
     /* TOP FLOATING UI */
-    .top-ui { position: absolute; top: 20px; left: 0; right: 0; display: flex; justify-content: space-between; padding: 0 20px; z-index: 10; pointer-events: none; }
+    .top-ui { position: absolute; top: 20px; left: 0; right: 0; display: flex; justify-content: space-between; align-items: center; padding: 0 16px; z-index: 10; pointer-events: none; gap: 8px; }
     .top-ui > * { pointer-events: auto; }
-    .icon-btn { width: 44px; height: 44px; background: rgba(13, 13, 26, 0.85); backdrop-filter: blur(10px); border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 1.4rem; cursor: pointer; border: none; color: #fff; box-shadow: 0 4px 12px rgba(0,0,0,0.5); transition: transform 0.2s; }
+    .icon-btn { width: 44px; height: 44px; background: rgba(13, 13, 26, 0.85); backdrop-filter: blur(10px); border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 1.4rem; cursor: pointer; border: none; color: #fff; box-shadow: 0 4px 12px rgba(0,0,0,0.5); transition: transform 0.2s; flex-shrink: 0; }
     .icon-btn:active { transform: scale(0.95); }
-    .earnings-pill { background: rgba(13, 13, 26, 0.85); backdrop-filter: blur(10px); padding: 8px 20px; border-radius: 30px; display: flex; flex-direction: column; align-items: center; box-shadow: 0 4px 12px rgba(0,0,0,0.5); }
+    .earnings-pill { background: rgba(13, 13, 26, 0.85); backdrop-filter: blur(10px); padding: 8px 16px; border-radius: 30px; display: flex; flex-direction: column; align-items: center; box-shadow: 0 4px 12px rgba(0,0,0,0.5); flex-shrink: 0; }
     .earnings-pill .amount { font-weight: 700; font-size: 1.1rem; color: #fff; }
     .earnings-pill .label { font-size: 0.65rem; color: #888; }
 
-    /* GO ONLINE BUTTON (Big green button in middle) */
-    .go-online-container { position: absolute; bottom: 180px; left: 0; right: 0; display: flex; justify-content: center; z-index: 10; }
-    #go-online-btn { width: 240px; padding: 16px; background: #00d4aa; color: #0d0d1a; border: none; border-radius: 40px; font-weight: 700; font-size: 1.1rem; cursor: pointer; box-shadow: 0 8px 30px rgba(0, 212, 170, 0.3); transition: all 0.3s; }
+    /* TOP-CENTER GROUP: earnings, Go online, and the radius control all live
+       here, side by side, so Go online never floats alone in the middle of
+       the screen and can never be covered by the ride-request sheet below. */
+    .top-ui-center { display: flex; align-items: center; gap: 6px; flex-wrap: nowrap; min-width: 0; }
+    #go-online-btn { padding: 9px 14px; background: #00d4aa; color: #0d0d1a; border: none; border-radius: 20px; font-weight: 700; font-size: 0.8rem; cursor: pointer; box-shadow: 0 4px 12px rgba(0, 212, 170, 0.3); white-space: nowrap; flex-shrink: 0; }
     #go-online-btn.offline { background: #2a2a4e; color: #fff; box-shadow: none; }
+    .radius-pill { background: rgba(13, 13, 26, 0.85); backdrop-filter: blur(10px); border: 1px solid #2a2a4e; color: #fff; font-size: 0.72rem; padding: 8px 10px; border-radius: 16px; cursor: pointer; white-space: nowrap; flex-shrink: 0; box-shadow: 0 4px 12px rgba(0,0,0,0.5); }
 
-    /* BOTTOM SHEET (For ride requests when online) */
-    #bottom-sheet { position: absolute; bottom: 70px; left: 0; right: 0; background: rgba(13, 13, 26, 0.95); backdrop-filter: blur(10px); border-radius: 20px 20px 0 0; padding: 16px 20px; z-index: 10; transition: transform 0.3s ease; display: none; }
-    #bottom-sheet .handle { width: 36px; height: 4px; background: #444; margin: 0 auto 12px; border-radius: 4px; }
+    /* RIDE REQUEST SHEET -- draggable up/down via its handle, but capped at
+       50vh ("the middle of the app"), well below the top bar. Scrolls
+       internally past that cap. */
+    #bottom-sheet { position: absolute; left: 50%; bottom: 70px; transform: translateX(-50%); width: calc(100% - 32px); max-width: 420px; overflow-y: auto; background: rgba(13, 13, 26, 0.97); backdrop-filter: blur(10px); border-radius: 20px 20px 0 0; padding: 0 20px 16px; box-shadow: 0 -8px 30px rgba(0,0,0,0.4); z-index: 10; height: 0; touch-action: none; }
+    #bottom-sheet.hidden { display: none; }
+    #bottom-sheet .handle { width: 36px; height: 4px; background: #444; margin: 0 auto; border-radius: 4px; position: sticky; top: 0; padding: 14px 0 10px; cursor: grab; background-clip: content-box; }
+    #bottom-sheet .handle:active { cursor: grabbing; }
+    #bottom-sheet #driver-rides { padding-bottom: 4px; }
+
+    /* RADIUS SHEET -- draggable up/down, lets the driver pick 1-80km */
+    #radius-modal .chat-header { padding: 4px 20px 12px; }
+    #radius-value-display { text-align: center; font-size: 2.2rem; font-weight: 700; color: #00d4aa; margin: 4px 0 18px; }
+    #radius-slider { width: 100%; accent-color: #00d4aa; }
+    .radius-scale-labels { display: flex; justify-content: space-between; font-size: 0.72rem; color: #888; margin-top: 6px; }
+    #radius-modal .hint { color: #888; font-size: 0.8rem; margin-top: 18px; line-height: 1.4; }
+
+    /* LOCATION WARNING (shown if the browser can't get the driver's GPS fix --
+       e.g. permission denied, or the page isn't served over HTTPS) */
+    #location-warning { display: none; position: absolute; top: 76px; left: 16px; right: 16px; background: #3a1f1f; border: 1px solid #ff6b6b; color: #ffb3b3; font-size: 0.78rem; padding: 10px 14px; border-radius: 10px; z-index: 12; }
+    #location-warning.show { display: block; }
+
+    /* IN-APP CALL (signaling only — a ring/accept/end-call UI, no real audio
+       transport in this demo; see openOutgoingCall/etc. in driver.js) */
+    .call-btn-small { background: transparent; color: #00d4aa; border: 1px solid #00d4aa; padding: 8px 14px; border-radius: 20px; font-weight: 700; font-size: 0.8rem; cursor: pointer; }
+    #call-overlay { position: absolute; inset: 0; background: rgba(8,8,16,0.97); z-index: 60; display: flex; flex-direction: column; align-items: center; justify-content: center; color: #fff; }
+    #call-overlay.hidden { display: none; }
+    #call-avatar { width: 90px; height: 90px; border-radius: 50%; background: #1c1c36; display: flex; align-items: center; justify-content: center; font-size: 2.4rem; margin-bottom: 16px; }
+    #call-name { font-size: 1.3rem; font-weight: 700; }
+    #call-status { color: #6b6b8d; margin: 6px 0 30px; font-size: 0.9rem; }
+    #call-actions { display: flex; gap: 24px; }
+    .call-action-btn { width: 60px; height: 60px; border-radius: 50%; border: none; font-size: 1.4rem; cursor: pointer; display: flex; align-items: center; justify-content: center; }
+    .call-action-btn.accept { background: #00d4aa; }
+    .call-action-btn.decline, .call-action-btn.end { background: #ff6b6b; }
+
+    /* CONFIRMATION CODE MODAL (driver enters the passenger's code to start) */
+    #code-modal { position: absolute; inset: 0; background: rgba(8,8,16,0.94); z-index: 70; display: flex; align-items: center; justify-content: center; }
+    #code-modal.hidden { display: none; }
+    .code-box { background: #16213e; border: 1px solid #2a2a4e; border-radius: 16px; padding: 24px; width: min(320px, 86%); text-align: center; }
+    .code-box h3 { margin: 0 0 8px; color: #00d4aa; }
+    .code-box p { font-size: 0.85rem; color: #aaaaaa; margin: 0 0 16px; }
+    .code-box input { width: 100%; padding: 14px; box-sizing: border-box; border-radius: 8px; border: 1px solid #2a2a4e; background: #0f0f1e; color: #fff; font-size: 1.4rem; text-align: center; letter-spacing: 8px; outline: none; }
+    .code-box input:focus { border-color: #00d4aa; }
+    .code-error { color: #ff6b6b; font-size: 0.8rem; min-height: 18px; margin-top: 8px; }
+    .code-actions { display: flex; gap: 10px; margin-top: 12px; }
+    .code-actions button { flex: 1; padding: 12px; border: none; border-radius: 8px; font-weight: 700; cursor: pointer; font-size: 0.9rem; }
+    #code-cancel { background: #1f1f3a; color: #aaa; }
+    #code-confirm { background: #00d4aa; color: #0d0d1a; }
+
 
     /* BOTTOM NAVIGATION */
     #bottom-nav { position: absolute; bottom: 0; left: 0; right: 0; height: 70px; background: rgba(13, 13, 26, 0.95); backdrop-filter: blur(10px); border-top: 1px solid #2a2a4e; display: flex; justify-content: space-around; align-items: center; z-index: 20; padding-bottom: env(safe-area-inset-bottom); }
@@ -84,6 +136,14 @@
     .page-card .title { font-weight: 600; }
     .page-card .sub { font-size: 0.85rem; color: #888; }
     .page-card .amount { font-size: 1.2rem; font-weight: 700; color: #00d4aa; }
+    .payout-options { display: flex; gap: 10px; margin-top: 12px; }
+    .payout-option { flex: 1; padding: 12px; border-radius: 10px; background: #1f1f3a; color: #fff; border: 1px solid #2a2a4e; cursor: pointer; font-weight: 600; }
+    .payout-option.active { background: #00d4aa; color: #0d0d1a; border-color: #00d4aa; }
+    .commission-note { font-size: 0.75rem; color: #888; margin-top: 10px; }
+    .cashout-btn { width: 100%; padding: 14px; background: #00d4aa; color: #0d0d1a; border: none; border-radius: 10px; font-weight: 700; font-size: 1rem; cursor: pointer; margin-top: 10px; }
+    .cashout-btn:disabled { background: #2a2a4e; color: #888; cursor: not-allowed; }
+    .cashout-item { display: flex; justify-content: space-between; align-items: center; gap: 10px; padding: 10px 0; border-bottom: 1px solid #1a1a2e; font-size: 0.85rem; }
+    .cashout-item:last-child { border-bottom: none; }
     .history-item { display: flex; justify-content: space-between; padding: 12px 0; border-bottom: 1px solid #1a1a2e; }
     .history-item .info h4 { margin: 0; font-size: 0.9rem; }
     .history-item .info p { margin: 0; font-size: 0.75rem; color: #888; }
@@ -93,6 +153,27 @@
     #route-panel { display: none; position: absolute; top: 80px; right: 16px; width: 240px; background: rgba(13,13,26,0.9); backdrop-filter: blur(10px); border-radius: 12px; padding: 12px; z-index: 10; border: 1px solid #2a2a4e; }
     #route-panel h4 { margin: 0 0 8px; color: #00d4aa; }
     #route-panel .row { display: flex; justify-content: space-between; font-size: 0.8rem; margin-bottom: 4px; }
+
+    /* RIDE REQUEST CARDS: 40s countdown badge + Decline button */
+    .ride-timer { font-size: 0.75rem; font-weight: 700; color: #f5a623; white-space: nowrap; flex-shrink: 0; margin-left: 10px; }
+    .decline-btn:hover { background: rgba(255, 107, 107, 0.12); }
+
+    /* RIDER INFO + CHAT / PAYMENT (shown in the ride card once a ride is accepted) */
+    .chat-btn { background: #00d4aa; color: #0d0d1a; border: none; padding: 8px 14px; border-radius: 20px; font-weight: 700; font-size: 0.8rem; cursor: pointer; }
+    .payment-btn { background: transparent; color: #f5a623; border: 1px solid #f5a623; padding: 8px 14px; border-radius: 20px; font-weight: 700; font-size: 0.8rem; cursor: pointer; }
+
+    /* --- DRAGGABLE BOTTOM SHEETS (chat + payment method + radius) ---
+       Confined inside the app frame, height driven by JS (drag-sheet pattern
+       in driver.js) between --sheet-min/--sheet-max. */
+    #chat-modal, #payment-modal, #radius-modal { position: absolute; left: 0; right: 0; bottom: 0; top: auto; width: auto; height: 55vh; max-height: 90vh; min-height: 0; border-radius: 22px 22px 0 0; z-index: 40; box-shadow: 0 -10px 30px rgba(0,0,0,0.5); display: flex; flex-direction: column; touch-action: none; background: #15152a; }
+    #chat-modal.hidden { display: none; }
+    #payment-modal.hidden { display: none; }
+    #radius-modal.hidden { display: none; }
+    .sheet-handle { width: 40px; height: 5px; background: #444; border-radius: 4px; margin: 10px auto 4px; cursor: grab; flex-shrink: 0; }
+    .sheet-handle:active { cursor: grabbing; }
+    #payment-modal .chat-header { padding: 4px 20px 12px; }
+    #payment-options { padding: 4px 20px 20px; overflow-y: auto; flex: 1; }
+    .payment-option { display: flex; align-items: center; gap: 10px; padding: 14px; border-radius: 12px; background: #1c1c36; border: 1px solid #2a2a4e; margin-bottom: 10px; font-weight: 600; }
   </style>
 </head>
 <body>
@@ -103,25 +184,30 @@
     <!-- TOP UI -->
     <div class="top-ui">
       <button class="icon-btn" id="menu-btn">☰</button>
-      <div class="earnings-pill">
-        <span class="amount" id="total-earnings">R0.00</span>
-        <span class="label">Today</span>
+      <div class="top-ui-center">
+        <div class="earnings-pill">
+          <span class="amount" id="total-earnings">R0.00</span>
+          <span class="label">Today</span>
+        </div>
+        <button id="go-online-btn" class="offline">Go online</button>
+        <button class="radius-pill" id="radius-pill-btn">📍 8km</button>
       </div>
       <button class="icon-btn" id="safety-btn">🛡️</button>
     </div>
 
-    <!-- GO ONLINE BUTTON -->
-    <div class="go-online-container">
-      <button id="go-online-btn" class="offline">Go online</button>
-    </div>
+    <!-- Shown if the browser can't get a GPS fix (denied permission, or the
+         page isn't served over HTTPS/localhost, which browsers require). -->
+    <div id="location-warning"></div>
 
-    <!-- BOTTOM SHEET (For Ride Requests) -->
-    <div id="bottom-sheet">
-      <div class="handle"></div>
+    <!-- RIDE REQUESTS: draggable up/down via the handle, capped at the
+         middle of the app, scrollable internally past that. -->
+    <div id="bottom-sheet" class="hidden">
+      <div class="handle" id="bottom-sheet-handle"></div>
       <div id="driver-rides"></div>
     </div>
 
-    <!-- ROUTE PANEL -->
+    <!-- ROUTE PANEL (live distance/ETA overlay near the map; rider details
+         and chat live on the ride card in the bottom sheet, see above) -->
     <div id="route-panel">
       <h4>📍 Route</h4>
       <div class="row"><span>Distance</span><span id="route-distance">--</span></div>
@@ -143,7 +229,7 @@
         <div class="profile-avatar">👤</div>
         <div class="profile-info">
           <h3 id="driver-name">Driver</h3>
-          <span>⭐ Bronze</span>
+          <span id="driver-category">⭐ Bronze</span>
         </div>
       </div>
       <div class="menu-item"><span class="icon">💰</span> Earnings</div>
@@ -168,6 +254,70 @@
     <div id="page-container">
       <div class="page-header" id="page-title">Home</div>
       <div id="page-content"></div>
+    </div>
+
+    <!-- CHAT SHEET (driver <-> rider, once a ride is accepted) — draggable up/down -->
+    <div id="chat-modal" class="hidden">
+      <div class="sheet-handle" id="chat-handle"></div>
+      <div class="chat-header">
+        <span id="chat-with-name">Chat</span>
+        <span id="close-chat">✕</span>
+      </div>
+      <div id="chat-messages"></div>
+      <div class="chat-input-area">
+        <input type="text" id="chat-input" placeholder="Type a message..." />
+        <button id="chat-send-btn">Send</button>
+      </div>
+    </div>
+
+    <!-- PAYMENT INFO SHEET (read-only — shows how the rider is paying) — draggable up/down -->
+    <div id="payment-modal" class="hidden">
+      <div class="sheet-handle" id="payment-handle"></div>
+      <div class="chat-header">
+        <span>💳 Payment method</span>
+        <span id="close-payment">✕</span>
+      </div>
+      <div id="payment-options">
+        <div class="payment-option" id="payment-info-row">💵 <span>Cash</span></div>
+        <div style="color:#888; font-size:0.8rem; padding: 0 4px;">This is how the rider chose to pay — collected automatically, no action needed from you.</div>
+      </div>
+    </div>
+
+    <!-- RADIUS SHEET: adjust how far (1km-80km) ride requests can come from — draggable up/down -->
+    <div id="radius-modal" class="hidden">
+      <div class="sheet-handle" id="radius-handle"></div>
+      <div class="chat-header">
+        <span>📍 Request radius</span>
+        <span id="close-radius">✕</span>
+      </div>
+      <div style="padding: 4px 20px 24px;">
+        <div id="radius-value-display">8 km</div>
+        <input type="range" id="radius-slider" min="1" max="80" value="8" />
+        <div class="radius-scale-labels"><span>1 km</span><span>80 km</span></div>
+        <p class="hint">You'll only be notified of ride requests within this distance from your current location.</p>
+      </div>
+    </div>
+
+    <!-- IN-APP CALL OVERLAY (ring / in-call, driver <-> rider) -->
+    <div id="call-overlay" class="hidden">
+      <div id="call-avatar">📞</div>
+      <div id="call-name">Calling...</div>
+      <div id="call-status">Ringing...</div>
+      <div id="call-actions"></div>
+    </div>
+
+    <!-- CONFIRMATION CODE MODAL (driver must enter the passenger's code to start) -->
+    <div id="code-modal" class="hidden">
+      <div class="code-box">
+        <h3>Start ride</h3>
+        <p>Ask the passenger for the 4-digit confirmation code they set when booking. You must enter it to start the ride.</p>
+        <input type="text" id="code-input" inputmode="numeric" maxlength="4" placeholder="••••" />
+        <div class="code-error" id="code-error"></div>
+        <div class="code-actions">
+          <button id="code-cancel">Cancel</button>
+          <button id="code-confirm">Verify & start</button>
+        </div>
+      </div>
     </div>
   </div>
 
